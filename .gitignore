@@ -1,7 +1,10 @@
-node_modules/
+﻿node_modules/
 data/
 *.db
 *.db-wal
 *.db-shm
 .DS_Store
 dist/
+
+
+*.lnk
