@@ -1,0 +1,11 @@
+{
+  "name": "念念 · AI 复习规划器",
+  "short_name": "念念",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fdf0f6",
+  "theme_color": "#8ec5f0",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

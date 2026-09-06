@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>知识点 · 念念</title>
+  <script src="/vendor/tailwind.js"></script>
+  <link rel="stylesheet" href="/vendor/prism-tomorrow.min.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#8ec5f0">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="bg-slate-100">
+  <script>window.PAGE = 'knowledge';</script>
+  <div id="nav-root"></div>
+  <div id="page-content">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-800">知识点管理</h1>
+        <p class="text-sm text-slate-500 mt-1">手动管理知识点：新建、编辑、拆分、合并、删除</p>
+      </div>
+      <div class="flex gap-2">
+        <a href="/api/export/notes" class="text-sm font-medium bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">导出笔记</a>
+        <button onclick="openCreate()" class="text-sm font-medium bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">＋ 新建知识点</button>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+      <input id="search" oninput="loadList()" placeholder="搜索名称或内容…"
+        class="w-full sm:w-56 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+      <select id="tag-filter" onchange="loadList()" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+        <option value="">全部标签</option>
+      </select>
+      <label class="flex items-center gap-1.5 text-sm text-slate-600 cursor-pointer select-none">
+        <input type="checkbox" id="select-all" class="accent-indigo-600" onchange="toggleSelectAll(this)"> 全选
+      </label>
+      <span id="selected-count" class="text-xs text-indigo-600 hidden"></span>
+      <button id="merge-btn" onclick="mergeSelected()" class="hidden text-sm font-medium bg-amber-500 text-white px-4 py-2 rounded-lg hover:bg-amber-600">合并所选</button>
+      <span class="text-xs text-slate-400" id="count-label"></span>
+    </div>
+
+    <div id="list" class="space-y-3"></div>
+  </div>
+  <script src="/vendor/prism.min.js"></script>
+  <script src="/vendor/prism-clike.min.js"></script>
+  <script src="/vendor/prism-c.min.js"></script>
+  <script src="/vendor/prism-cpp.min.js"></script>
+  <script src="/vendor/prism-sql.min.js"></script>
+  <script src="/vendor/prism-go.min.js"></script>
+  <script src="/vendor/prism-java.min.js"></script>
+  <script src="/vendor/prism-python.min.js"></script>
+  <script src="/vendor/prism-javascript.min.js"></script>
+  <script src="/vendor/prism-typescript.min.js"></script>
+  <script src="/vendor/prism-markup.min.js"></script>
+  <script src="/vendor/prism-json.min.js"></script>
+  <script src="/vendor/prism-css.min.js"></script>
+  <script src="/vendor/prism-bash.min.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  let list = [];
+
+  async function loadTags() {
+    try {
+      const tags = await api('/knowledge/meta/tags');
+      const sel = document.getElementById('tag-filter');
+      tags.forEach((t) => sel.insertAdjacentHTML('beforeend', `<option value="${esc(t)}"># ${esc(t)}</option>`));
+    } catch (e) {}
+  }
+
+  async function loadList() {
+    const q = document.getElementById('search').value.trim();
+    const tag = document.getElementById('tag-filter').value;
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (tag) params.set('tag', tag);
+    try {
+      list = await api('/knowledge?' + params.toString());
+      document.getElementById('count-label').textContent = '共 ' + list.length + ' 个';
+      const sa = document.getElementById('select-all');
+      if (sa) { sa.checked = false; sa.indeterminate = false; }
+      document.getElementById('selected-count').classList.add('hidden');
+      render();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function render() {
+    const box = document.getElementById('list');
+    if (!list.length) { box.innerHTML = empty('还没有知识点，去「笔记录入」页添加吧'); return; }
+    box.innerHTML = list.map((k) => `
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition-shadow">
+        <div class="flex items-start gap-3">
+          <input type="checkbox" data-id="${k.id}" onchange="toggleMergeBtn()" class="mt-1 accent-indigo-600 shrink-0">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-semibold text-slate-800">${esc(k.name)}</span>
+              ${(k.tag_tree || []).map((t) => '<span class="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">#' + esc(t) + '</span>').join('')}
+            </div>
+            <div class="text-xs text-slate-500 mt-1 line-clamp-2">${renderRich(k.content)}</div>
+            ${k.summary ? '<div class="text-xs text-indigo-500 mt-1 line-clamp-1">' + renderRich(k.summary) + '</div>' : ''}
+            ${(k.points || []).length ? '<div class="text-xs text-amber-600 mt-0.5">' + (k.points || []).length + ' 个复习要点</div>' : ''}
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-xs text-slate-500">
+              <span>复习 ${k.review_count} 次</span>
+              <span class="flex items-center gap-2">掌握度 ${k.master_rate}% <span class="inline-block w-20">${progressBar(k.master_rate)}</span></span>
+              <span>下次复习：${fmtTime(k.next_review_time)}</span>
+              <span>时长 ${k.manual_duration || k.estimate_duration} 分钟</span>
+            </div>
+          </div>
+          <div class="flex flex-col gap-1.5 shrink-0">
+            <a href="/review?kp=${k.id}" class="text-center text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100">立即复习</a>
+            <button onclick="openEdit(${k.id})" class="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-200">编辑</button>
+            <button onclick="openSplit(${k.id})" class="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-200">拆分</button>
+            <button onclick="delKp(${k.id})" class="text-xs bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg hover:bg-rose-100">删除</button>
+          </div>
+        </div>
+      </div>`).join('');
+    highlightBlocks(box);
+  }
+
+  function toggleMergeBtn() {
+    const cbs = Array.from(document.querySelectorAll('#list input[type=checkbox]'));
+    const n = cbs.filter((c) => c.checked).length;
+    document.getElementById('merge-btn').classList.toggle('hidden', n < 2);
+    const sc = document.getElementById('selected-count');
+    if (sc) {
+      sc.classList.toggle('hidden', n === 0);
+      sc.textContent = '已选 ' + n + ' 个';
+    }
+    const sa = document.getElementById('select-all');
+    if (sa && cbs.length) {
+      sa.checked = n === cbs.length;
+      sa.indeterminate = n > 0 && n < cbs.length;
+    }
+  }
+
+  function toggleSelectAll(cb) {
+    document.querySelectorAll('#list input[type=checkbox]').forEach((c) => c.checked = cb.checked);
+    toggleMergeBtn();
+  }
+
+  async function delKp(id) {
+    if (!confirm('确定删除该知识点？相关题目与记录将一并删除。')) return;
+    try {
+      await api('/knowledge/' + id, { method: 'DELETE' });
+      toast('已删除', 'ok');
+      loadList();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  // ---------- 新建 / 编辑 ----------
+  function openCreate() {
+    openEditModal(null);
+  }
+
+  function openEdit(id) {
+    const k = list.find((x) => x.id === id);
+    openEditModal(k);
+  }
+
+  function openEditModal(k) {
+    const isNew = !k;
+    const v = k || { name: '', content: '', summary: '', points: [], tag_tree: [], estimate_duration: 10, manual_duration: null, custom_exam_flow: null, master_rate: 0 };
+    const html = `
+      <h2 class="font-semibold text-slate-800 mb-4">${isNew ? '新建知识点' : '编辑知识点'}</h2>
+      <div class="space-y-3">
+        <div><label class="block text-xs font-medium text-slate-600 mb-1">名称 *</label>
+          <input id="m-name" value="${esc(v.name)}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></div>
+        <div><label class="block text-xs font-medium text-slate-600 mb-1">内容</label>
+          <textarea id="m-content" rows="6" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono">${esc(v.content)}</textarea></div>
+        <div><label class="block text-xs font-medium text-slate-600 mb-1">AI 总结（整篇笔记核心概括）</label>
+          <textarea id="m-summary" rows="3" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">${esc(v.summary || '')}</textarea></div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">复习要点（每个要点可含代码示例，出题按要点全覆盖、选择题优先）</label>
+          <div id="m-points" class="space-y-2"></div>
+          <button onclick="addEditPoint()" class="mt-2 text-xs border border-dashed border-indigo-300 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-50">＋ 添加要点</button>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-medium text-slate-600 mb-1">标签（逗号分隔）</label>
+            <input id="m-tags" value="${esc((v.tag_tree || []).join(','))}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></div>
+          <div><label class="block text-xs font-medium text-slate-600 mb-1">AI 预估时长（分钟）</label>
+            <input id="m-est" type="number" min="1" value="${v.estimate_duration || 10}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></div>
+          <div><label class="block text-xs font-medium text-slate-600 mb-1">手动时长（覆盖 AI，可留空）</label>
+            <input id="m-manual" type="number" min="1" value="${v.manual_duration || ''}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></div>
+          <div><label class="block text-xs font-medium text-slate-600 mb-1">当前掌握度（%）</label>
+            <input id="m-rate" type="number" min="0" max="100" value="${v.master_rate}" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></div>
+        </div>
+        <div><label class="block text-xs font-medium text-slate-600 mb-1">自定义题型流程（0选择 1填空 2简答，逗号分隔；留空用默认）</label>
+          <input id="m-flow" value="${esc((v.custom_exam_flow || []).join(','))}" placeholder="0,0,1,1,2,2"
+            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button data-close class="text-sm text-slate-600 px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">取消</button>
+          <button onclick="saveEdit(${v.id || 'null'})" class="text-sm font-medium bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">保存</button>
+        </div>
+      </div>`;
+    const m = modal(html);
+    addCodeToolbar(document.getElementById('m-content'));
+    (v.points || []).forEach((pt) => addEditPoint(pt));
+    window.__m = m;
+  }
+
+  function addEditPoint(pt) {
+    const p = pt || { name: '', content: '' };
+    const box = document.getElementById('m-points');
+    if (!box) return;
+    const row = document.createElement('div');
+    row.className = 'point-row bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2';
+    row.innerHTML = `
+      <div class="flex items-center gap-2">
+        <input class="pt-name flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm" placeholder="要点名称" value="${esc(p.name)}">
+        <button onclick="this.closest('.point-row').remove()" class="text-xs bg-rose-50 text-rose-600 px-2.5 py-1.5 rounded-lg hover:bg-rose-100 shrink-0">删除</button>
+      </div>
+      <textarea rows="3" class="pt-content w-full border border-slate-300 rounded-lg px-3 py-2 text-xs" placeholder="要点内容（可粘贴 go 等语言代码示例）">${esc(p.content)}</textarea>`;
+    box.appendChild(row);
+  }
+
+  function collectEditPoints() {
+    const box = document.getElementById('m-points');
+    if (!box) return [];
+    return Array.from(box.querySelectorAll('.point-row')).map((r) => ({
+      name: r.querySelector('.pt-name').value.trim(),
+      content: r.querySelector('.pt-content').value.trim()
+    })).filter((pt) => pt.name || pt.content);
+  }
+
+  async function saveEdit(id) {
+    const body = {
+      name: document.getElementById('m-name').value.trim(),
+      content: document.getElementById('m-content').value,
+      summary: document.getElementById('m-summary').value.trim(),
+      points: collectEditPoints(),
+      tags: document.getElementById('m-tags').value.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+      estimate_duration: parseInt(document.getElementById('m-est').value) || 10,
+      manual_duration: parseInt(document.getElementById('m-manual').value) || null,
+      master_rate: Math.min(100, Math.max(0, parseInt(document.getElementById('m-rate').value) || 0)),
+      custom_exam_flow: (document.getElementById('m-flow').value.split(/[,，]/).map((s) => parseInt(s.trim())).filter((n) => !isNaN(n) && n >= 0 && n <= 2))
+    };
+    if (!body.name) { toast('名称不能为空', 'err'); return; }
+    if (!body.custom_exam_flow.length) body.custom_exam_flow = null;
+    try {
+      if (id) await api('/knowledge/' + id, { method: 'PUT', body: JSON.stringify(body) });
+      else await api('/knowledge', { method: 'POST', body: JSON.stringify(body) });
+      window.__m && window.__m.close();
+      toast('已保存', 'ok');
+      loadList();
+      loadTags();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  // ---------- 拆分 ----------
+  function openSplit(id) {
+    const k = list.find((x) => x.id === id);
+    const html = `
+      <h2 class="font-semibold text-slate-800 mb-2">拆分知识点</h2>
+      <p class="text-xs text-slate-500 mb-3">拆分为多个独立知识点，每行一个，格式：<b>名称 | 内容</b>（原知识点将被替换）</p>
+      <div class="text-xs bg-slate-50 rounded-lg p-2 mb-3 text-slate-500">原知识点：${esc(k.name)}</div>
+      <textarea id="s-parts" rows="6" placeholder="函数定义 | y = f(x) 的对应关系&#10;函数性质 | 单调性与奇偶性"
+        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"></textarea>
+      <div class="flex justify-end gap-2 pt-3">
+        <button data-close class="text-sm text-slate-600 px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">取消</button>
+        <button onclick="doSplit(${id})" class="text-sm font-medium bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">拆分</button>
+      </div>`;
+    const m = modal(html);
+    window.__m = m;
+  }
+
+  async function doSplit(id) {
+    const parts = document.getElementById('s-parts').value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+      const idx = l.indexOf('|');
+      return idx > 0 ? { name: l.slice(0, idx).trim(), content: l.slice(idx + 1).trim() } : { name: l, content: '' };
+    }).filter((p) => p.name);
+    if (!parts.length) { toast('请至少填写一个拆分项', 'err'); return; }
+    try {
+      await api('/knowledge/' + id + '/split', { method: 'POST', body: JSON.stringify({ parts }) });
+      window.__m && window.__m.close();
+      toast('拆分完成', 'ok');
+      loadList();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  // ---------- 合并 ----------
+  async function mergeSelected() {
+    const ids = Array.from(document.querySelectorAll('#list input[type=checkbox]:checked')).map((c) => parseInt(c.dataset.id));
+    if (ids.length < 2) return;
+    if (!confirm('将合并所选知识点到第一个（内容合并、复习记录保留），继续？')) return;
+    try {
+      await api('/knowledge/merge', { method: 'POST', body: JSON.stringify({ ids }) });
+      toast('合并完成', 'ok');
+      loadList();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  loadTags();
+  loadList();
+  </script>
+</body>
+</html>

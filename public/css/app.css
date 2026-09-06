@@ -1,0 +1,309 @@
+/* ============================================================
+   念念 · 淡粉 × 淡蓝 柔和主题
+   整体：淡粉 #fdf0f6 → 淡蓝 #e9f3fc
+   主色：淡蓝 #8ec5f0 / 淡粉 #f2a3c0
+   ============================================================ */
+:root {
+  --ani-bg-top: #fdf0f6;
+  --ani-bg-bottom: #e9f3fc;
+  --ani-sky: #dbeaf8;
+  --ani-blue: #8ec5f0;
+  --ani-blue-deep: #5f9fd8;
+  --ani-blue-ink: #3c7ca8;
+  --ani-pink: #f2a3c0;
+  --ani-pink-deep: #e57ca4;
+  --ani-pink-ink: #b34f76;
+  --ani-green: #b7c96e;
+  --ani-green-deep: #93a54f;
+  --ani-orange: #f5b26a;
+  --ani-orange-deep: #e08a4a;
+  --ani-ink: #171717;
+  --ani-sidebar: #2b3f58;
+  --ani-sidebar-hover: #3a5068;
+}
+
+/* ---------- 基础 ---------- */
+html, body { overflow-x: hidden; }
+body {
+  font-family: "华文中宋", "STZhongsong", "思源宋体", "Source Han Serif SC", "Noto Serif CJK SC", "宋体", "SimSun", "NSimSun", serif;
+  background-color: var(--ani-bg-bottom);
+  color: var(--ani-ink);
+  background-image:
+    linear-gradient(160deg, var(--ani-bg-top) 0%, var(--ani-bg-bottom) 100%),
+    radial-gradient(48rem 30rem at -8% -12%, rgba(242, 163, 192, 0.55), transparent 60%),
+    radial-gradient(42rem 28rem at 108% 108%, rgba(142, 197, 240, 0.55), transparent 60%),
+    radial-gradient(26rem 20rem at 102% 28%, rgba(183, 201, 110, 0.22), transparent 60%),
+    radial-gradient(20rem 16rem at 60% -8%, rgba(245, 178, 106, 0.22), transparent 60%);
+  background-attachment: fixed;
+}
+#page-content { display: block; }
+
+/* 让主内容区透明，露出 body 的粉蓝渐变光斑 */
+main.ml-60, main.bg-slate-100, main { background: transparent !important; }
+
+/* ---------- 滚动条 ---------- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(142, 197, 240, 0.55); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(242, 163, 192, 0.75); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- 背景色映射 ---------- */
+.bg-slate-100 { background-color: var(--ani-bg-bottom) !important; }
+.bg-slate-50 { background-color: #f6fafe !important; }
+.bg-slate-200 { background-color: var(--ani-sky) !important; }
+.bg-slate-300 { background-color: #c4d9ec !important; }
+.bg-slate-700 { background-color: #415d7d !important; }
+.bg-slate-800 { background-color: var(--ani-sidebar-hover) !important; }
+.bg-slate-900 { background-color: var(--ani-sidebar) !important; }
+.bg-slate-100\/70 { background-color: rgba(233, 243, 252, 0.7) !important; }
+.bg-white { background-color: #ffffff !important; }
+.bg-black { background-color: #171717 !important; }
+
+/* ---------- 文字色映射 ---------- */
+.text-slate-300 { color: #b6c6d4 !important; }
+.text-slate-400 { color: #93a8ba !important; }
+.text-slate-500 { color: #6b8298 !important; }
+.text-slate-600 { color: #4a6379 !important; }
+.text-slate-700 { color: #33475c !important; }
+.text-slate-800 { color: var(--ani-ink) !important; }
+
+/* ---------- 边框色映射 ---------- */
+.border-slate-100 { border-color: #f2f7fc !important; }
+.border-slate-200 { border-color: var(--ani-sky) !important; }
+.border-slate-300 { border-color: #c4d9ec !important; }
+.border-slate-800 { border-color: #3a5068 !important; }
+
+/* ---------- 淡蓝（主色） ---------- */
+.bg-indigo-50 { background-color: #e8f4fd !important; }
+.bg-indigo-100 { background-color: #d7edfc !important; }
+.bg-indigo-300 { background-color: #a9d6f5 !important; }
+.bg-indigo-500 { background-color: var(--ani-blue) !important; }
+.bg-indigo-600 {
+  background-image: linear-gradient(120deg, var(--ani-pink-deep) 0%, var(--ani-blue-deep) 100%) !important;
+  background-color: var(--ani-blue-deep) !important;
+}
+.bg-indigo-700 {
+  background-image: linear-gradient(120deg, #da7da7 0%, #4a8dc4 100%) !important;
+  background-color: #4a8dc4 !important;
+}
+.text-indigo-400 { color: #6fafe0 !important; }
+.text-indigo-500 { color: var(--ani-blue) !important; }
+.text-indigo-600 { color: var(--ani-blue-ink) !important; }
+.text-indigo-700 { color: #35658c !important; }
+.text-indigo-800 { color: #2d5474 !important; }
+.text-indigo-900 { color: #25445e !important; }
+.border-indigo-100 { border-color: #d7edfc !important; }
+.border-indigo-200 { border-color: #b8e0fa !important; }
+.border-indigo-300 { border-color: #a9d6f5 !important; }
+.border-indigo-400 { border-color: #8ec9f0 !important; }
+.border-indigo-500 { border-color: var(--ani-blue) !important; }
+.border-indigo-600 { border-color: var(--ani-blue-deep) !important; }
+.ring-indigo-500 { --tw-ring-color: var(--ani-blue) !important; }
+.accent-indigo-600 { accent-color: var(--ani-blue-deep) !important; }
+
+/* ---------- 淡绿（成功） ---------- */
+.bg-emerald-50 { background-color: #f3f6e0 !important; }
+.bg-emerald-500 { background-color: var(--ani-green) !important; }
+.bg-emerald-600 { background-color: var(--ani-green-deep) !important; }
+.bg-emerald-700 { background-color: #7d8e41 !important; }
+.text-emerald-600 { color: #7c8c3f !important; }
+.text-emerald-700 { color: #68762f !important; }
+.text-emerald-800 { color: #566226 !important; }
+.border-emerald-200 { border-color: #dde6a8 !important; }
+.border-emerald-500 { border-color: var(--ani-green) !important; }
+
+/* ---------- 淡橙（警示） ---------- */
+.bg-amber-50 { background-color: #fdf3e6 !important; }
+.bg-amber-500 { background-color: var(--ani-orange) !important; }
+.bg-amber-600 { background-color: var(--ani-orange-deep) !important; }
+.bg-amber-500\/20 { background-color: rgba(245, 178, 106, 0.25) !important; }
+.text-amber-300 { color: #f2c79a !important; }
+.text-amber-600 { color: #c07b3a !important; }
+
+/* ---------- 淡粉（危险/粉色强调） ---------- */
+.bg-rose-50 { background-color: #fcebf2 !important; }
+.bg-rose-100 { background-color: #f9dcea !important; }
+.bg-rose-500 { background-color: var(--ani-pink) !important; }
+.bg-rose-600 { background-color: var(--ani-pink-deep) !important; }
+.text-rose-500 { color: var(--ani-pink) !important; }
+.text-rose-600 { color: var(--ani-pink-ink) !important; }
+.text-rose-700 { color: #a13f63 !important; }
+.border-rose-200 { border-color: #f6c8da !important; }
+.border-rose-500 { border-color: var(--ani-pink) !important; }
+
+/* ---------- hover 态映射 ---------- */
+.hover\:bg-slate-50:hover { background-color: #f6fafe !important; }
+.hover\:bg-slate-100:hover { background-color: #f0f6fc !important; }
+.hover\:bg-slate-200:hover { background-color: var(--ani-sky) !important; }
+.hover\:bg-slate-300:hover { background-color: #c4d9ec !important; }
+.hover\:bg-slate-700:hover { background-color: #415d7d !important; }
+.hover\:bg-slate-800:hover { background-color: var(--ani-sidebar-hover) !important; }
+.hover\:bg-indigo-50:hover { background-color: #dcf1fd !important; }
+.hover\:bg-indigo-100:hover { background-color: #d7edfc !important; }
+.hover\:bg-indigo-700:hover {
+  background-image: linear-gradient(120deg, #d4739f 0%, #3f82b8 100%) !important;
+  background-color: #3f82b8 !important;
+}
+.hover\:bg-emerald-700:hover { background-color: #7d8e41 !important; }
+.hover\:bg-amber-600:hover { background-color: #d07d3c !important; }
+.hover\:bg-rose-100:hover { background-color: #f9dcea !important; }
+.hover\:text-rose-500:hover { color: var(--ani-pink) !important; }
+.hover\:text-slate-600:hover { color: #4a6379 !important; }
+.hover\:border-indigo-200:hover { border-color: #b8e0fa !important; }
+.hover\:border-indigo-300:hover { border-color: #a9d6f5 !important; }
+.hover\:border-indigo-400:hover { border-color: #8ec9f0 !important; }
+
+/* ---------- 圆角与阴影：更软、更圆润 ---------- */
+.rounded-lg { border-radius: 0.9rem !important; }
+.rounded-xl { border-radius: 1rem !important; }
+.rounded-2xl { border-radius: 1.5rem !important; }
+.shadow-sm { box-shadow: 0 4px 16px -6px rgba(229, 124, 164, 0.18), 0 2px 6px -2px rgba(23, 23, 23, 0.05) !important; }
+.shadow-md { box-shadow: 0 10px 24px -8px rgba(142, 197, 240, 0.3), 0 4px 8px -2px rgba(23, 23, 23, 0.07) !important; }
+.shadow-lg { box-shadow: 0 18px 40px -12px rgba(142, 197, 240, 0.35), 0 6px 12px -4px rgba(23, 23, 23, 0.08) !important; }
+.shadow-xl { box-shadow: 0 24px 48px -14px rgba(23, 23, 23, 0.16) !important; }
+.shadow-2xl { box-shadow: 0 30px 60px -16px rgba(23, 23, 23, 0.2) !important; }
+
+/* ---------- 页面标题：大标题 + 粉蓝渐变条 ---------- */
+#page-content h1 {
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ani-ink);
+}
+#page-content h1::after {
+  content: '';
+  display: block;
+  width: 5rem;
+  height: 0.5rem;
+  margin: 0.6rem 0 0.9rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ani-pink), var(--ani-blue));
+}
+
+/* ---------- 侧边栏：深蓝圆角 + 光晕 ---------- */
+#nav-root aside {
+  border-radius: 0 1.75rem 1.75rem 0;
+  box-shadow: 10px 0 32px -14px rgba(43, 63, 88, 0.45);
+}
+#nav-root aside .font-bold { letter-spacing: 0.01em; }
+
+/* ---------- 首页 hero 横幅：淡粉→淡蓝 ---------- */
+.hero-banner {
+  position: relative;
+  overflow: hidden;
+  border-radius: 2rem;
+  padding: 2rem;
+  color: var(--ani-ink);
+  background: linear-gradient(120deg, #fdeef5 0%, #f4e9fa 38%, #dceffd 100%);
+  border: 1px solid rgba(142, 197, 240, 0.55);
+  box-shadow: 0 18px 40px -14px rgba(229, 124, 164, 0.3), 0 8px 24px -12px rgba(142, 197, 240, 0.35);
+}
+.hero-banner::before,
+.hero-banner::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.hero-banner::before {
+  width: 300px; height: 300px;
+  top: -130px; right: -70px;
+  background: rgba(242, 163, 192, 0.35);
+}
+.hero-banner::after {
+  width: 210px; height: 210px;
+  bottom: -100px; right: 150px;
+  background: rgba(142, 197, 240, 0.45);
+}
+.hero-banner > * { position: relative; z-index: 1; }
+
+/* ---------- 富文本与代码高亮（保持原样） ---------- */
+.rich-text { white-space: pre-wrap; word-break: break-word; line-height: 1.75; }
+.rich-text > span { white-space: pre-wrap; }
+.rich-text pre.code-block {
+  background: #0f172a; color: #e2e8f0; border-radius: 10px;
+  padding: 12px 14px; overflow-x: auto; margin: 10px 0;
+  font-size: 13px; line-height: 1.6; white-space: pre; tab-size: 2;
+}
+.rich-text pre.code-block code {
+  font-family: Consolas, "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+  background: transparent !important; color: inherit;
+}
+code[class*="language-"], pre[class*="language-"] {
+  font-family: Consolas, "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+  font-size: 13px;
+}
+.point-row textarea { font-family: Consolas, "Cascadia Code", Menlo, monospace; }
+pre.code-editor { tab-size: 2; }
+
+/* ---------- 移动端适配：顶部栏 / 底部标签栏 / 安全区 ---------- */
+.mobile-topbar {
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  box-sizing: border-box;
+}
+.mobile-bottombar {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (max-width: 767px) {
+  main {
+    padding-top: calc(56px + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  #steps .px-3 { padding-left: 0.65rem; padding-right: 0.65rem; }
+}
+
+@keyframes fadein { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* ============================================================
+   点击特效：涟漪 + 按压回弹
+   ============================================================ */
+.ripple-host {
+  position: relative;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  background: currentColor;
+  opacity: 0.32;
+  transform: scale(0);
+  animation: ripple-pop 0.55s ease-out forwards;
+  user-select: none;
+}
+@keyframes ripple-pop { to { transform: scale(1); opacity: 0; } }
+
+button:not(:disabled),
+a[href] {
+  transition: transform 0.12s ease, color 0.2s ease, background-color 0.2s ease,
+    border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+button:not(:disabled):active { transform: scale(0.94); }
+a[href]:active { transform: scale(0.97); }
+
+/* ============================================================
+   页面切换动画
+   ============================================================ */
+#page-content.page-enter {
+  animation: page-in 0.45s cubic-bezier(0.22, 0.8, 0.36, 1) both;
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: none; }
+}
+main.page-out {
+  animation: page-out 0.22s ease forwards;
+}
+@keyframes page-out {
+  to { opacity: 0; transform: translateY(-10px); }
+}
+
+
+/* ---------- 念念品牌：柔和宋体 ---------- */
+.brand-poem {
+  font-family: "华文中宋", "STZhongsong", "思源宋体", "Source Han Serif SC", "Noto Serif CJK SC", "宋体", "SimSun", serif;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+}

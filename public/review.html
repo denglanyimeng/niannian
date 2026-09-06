@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>开始复习 · 念念</title>
+  <script src="/vendor/tailwind.js"></script>
+  <link rel="stylesheet" href="/vendor/prism-tomorrow.min.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#8ec5f0">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="bg-slate-100">
+  <script>window.PAGE = 'review';</script>
+  <div id="nav-root"></div>
+  <div id="page-content">
+    <h1 class="text-2xl font-bold text-slate-800 mb-1">开始复习</h1>
+    <p class="text-sm text-slate-500 mb-6">按艾宾浩斯计划完成今日复习，逐题作答后统一批改</p>
+
+    <!-- 待复习列表 -->
+    <div id="due-view" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+      <h2 class="font-semibold text-slate-800 mb-4">今日待复习</h2>
+      <div id="due-list" class="space-y-3"></div>
+
+      <div id="tomorrow-view" class="mt-5 pt-4 border-t border-slate-100 hidden">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-slate-800 text-sm">明日待复习</h3>
+          <span class="text-[11px] text-amber-600 bg-amber-50 px-2 py-1 rounded">未到复习时间</span>
+        </div>
+        <div class="text-xs text-slate-400 mb-3 leading-relaxed">按艾宾浩斯遗忘曲线安排的时间复习更省力、更高效、记忆更长久；提前复习会打乱记忆节奏，建议优先完成今日任务，明天按计划复习。</div>
+        <div id="tomorrow-list" class="space-y-2"></div>
+      </div>
+      <div class="flex flex-wrap items-center gap-3 mt-5 pt-4 border-t border-slate-100">
+        <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+          <input type="checkbox" id="select-all" class="accent-indigo-600"> 全选
+        </label>
+        <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">题量
+          <select id="qty-select" class="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white cursor-pointer">
+            <option value="0" selected>自动（按复习次数升级）</option>
+            <option value="8">精简（约8题）</option>
+            <option value="16">标准（约16题）</option>
+            <option value="24">加量（约24题）</option>
+          </select>
+        </label>
+        <span class="text-[11px] text-slate-400">自动模式：第1-2次只出选择 → 第3-4次加填空 → 第5-6次加简答</span>
+        <button id="start-review-btn" onclick="startReview()" class="text-sm font-medium bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700">开始复习所选</button>
+        <span id="due-summary" class="text-xs text-slate-400"></span>
+      </div>
+    </div>
+
+    <!-- 答题视图 -->
+    <div id="quiz-view" class="hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto">
+        <div class="flex items-center justify-between mb-4">
+          <div class="text-xs text-slate-500" id="quiz-progress"></div>
+          <button onclick="abortQuiz()" class="text-xs text-slate-400 hover:text-slate-600">退出复习</button>
+        </div>
+        <div id="quiz-body"></div>
+      </div>
+    </div>
+
+    <!-- 结果视图 -->
+    <div id="result-view" class="hidden"></div>
+  </div>
+  <script src="/vendor/prism.min.js"></script>
+  <script src="/vendor/prism-clike.min.js"></script>
+  <script src="/vendor/prism-c.min.js"></script>
+  <script src="/vendor/prism-cpp.min.js"></script>
+  <script src="/vendor/prism-sql.min.js"></script>
+  <script src="/vendor/prism-go.min.js"></script>
+  <script src="/vendor/prism-java.min.js"></script>
+  <script src="/vendor/prism-python.min.js"></script>
+  <script src="/vendor/prism-javascript.min.js"></script>
+  <script src="/vendor/prism-typescript.min.js"></script>
+  <script src="/vendor/prism-markup.min.js"></script>
+  <script src="/vendor/prism-json.min.js"></script>
+  <script src="/vendor/prism-css.min.js"></script>
+  <script src="/vendor/prism-bash.min.js"></script>
+  <script src="/js/app.js"></script>
+  <script>  const TYPE_LABEL = { 0: '选择题', 1: '填空题', 2: '简答题' };
+  let duePlan = { tasks: [] };
+  let quiz = null;
+  let results = null;
+  function fmtTomorrow(iso) {
+    if (!iso) return '未安排';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return '明天 ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  async function loadDue() {
+    try {
+      duePlan = await api('/review/due');
+      // 支持 ?kp=ID 手动复习（提前复习未到计划时间的知识点）
+      const manual = [];
+      const params = new URLSearchParams(location.search);
+      const kpId = parseInt(params.get('kp') || '0');
+      if (kpId) {
+        const detail = await api('/knowledge/' + kpId);
+        if (detail && detail.kp) {
+          const kp = detail.kp;
+          manual.push({
+            kp_id: kp.id,
+            name: kp.name,
+            due_at: kp.next_review_time,
+            urgency_hours: 0,
+            duration_minutes: kp.manual_duration || kp.estimate_duration || 10,
+            review_count: kp.review_count,
+            master_rate: kp.master_rate,
+            question_type: 0,
+            manual: true
+          });
+        }
+      }
+      const allTasks = manual.concat(duePlan.tasks);
+      const box = document.getElementById('due-list');
+      // 明日待复习：无论今日是否有到期任务都展示（灰色提示，可立即复习）
+      const tWrap = document.getElementById('tomorrow-view');
+      const tBox = document.getElementById('tomorrow-list');
+      if (duePlan.tomorrow && duePlan.tomorrow.length) {
+        tWrap.classList.remove('hidden');
+        tBox.innerHTML = duePlan.tomorrow.map((t) => `
+          <div class="flex items-center gap-3 bg-slate-100/70 rounded-xl px-4 py-3 opacity-70">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium text-slate-500 text-sm">${esc(t.name)}</div>
+              <div class="text-xs text-slate-400 mt-0.5">计划 ${fmtTomorrow(t.due_at)} · 预计 ${t.duration_minutes} 分钟 · 第 ${t.review_count + 1} 次复习（${TYPE_LABEL[t.question_type] || '简答'}）</div>
+            </div>
+            <button onclick="startEarlyReview(${t.kp_id})" class="shrink-0 text-xs font-medium bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-300">立即复习</button>
+          </div>`).join('');
+      } else {
+        tWrap.classList.add('hidden');
+      }
+      if (!allTasks.length) {
+        box.innerHTML = empty('今天没有到期任务');
+        document.getElementById('start-review-btn').disabled = true;
+        return;
+      }
+      box.innerHTML = allTasks.map((t) => `
+        <label class="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-3 cursor-pointer hover:bg-slate-100">
+          <input type="checkbox" class="task-cb accent-indigo-600" value="${t.kp_id}" data-dur="${t.duration_minutes}">
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-slate-800 text-sm">${esc(t.name)} ${t.manual ? '<span class="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded ml-1">手动复习</span>' : ''}</div>
+            <div class="text-xs text-slate-500 mt-0.5">${t.manual ? '未到计划时间，提前复习 · 计划 ' + fmtTime(t.due_at) : (t.urgency_hours > 0 ? '<span class="text-rose-500">已超期 ' + t.urgency_hours + ' 小时</span> · ' : '') + '预计 ' + t.duration_minutes + ' 分钟 · 第 ' + (t.review_count + 1) + ' 次复习（' + (TYPE_LABEL[t.question_type] || '简答') + '）'}</div>
+          </div>
+        </label>`).join('');
+      const sum = allTasks.length ? `共 ${allTasks.length} 个任务 · 今日容量 ${duePlan.capacity_minutes} 分钟` : '';
+      document.getElementById('due-summary').textContent = sum;
+      if (duePlan.overloaded.length) box.insertAdjacentHTML('beforeend', `<div class="text-xs text-amber-600 bg-amber-50 rounded-xl px-4 py-3">另有 ${duePlan.overloaded.length} 个知识点超出容量已顺延。</div>`);
+      document.getElementById('select-all').onchange = (e) => document.querySelectorAll('.task-cb').forEach((c) => c.checked = e.target.checked);
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function beginQuiz(ids) {
+    document.getElementById('due-view').classList.add('hidden');
+    const qv = document.getElementById('quiz-view');
+    qv.classList.remove('hidden');
+    document.getElementById('quiz-progress').textContent = '正在出题…';
+    document.getElementById('quiz-body').innerHTML = '<div class="py-12">' + spinner('AI 正在出题…') + '</div>';
+    try {
+      const qty = parseInt(document.getElementById('qty-select').value) || 0;
+      const r = await api('/review/start', { method: 'POST', body: JSON.stringify({ kp_ids: ids, count: qty }) });
+      const questions = [];
+      for (const s of r.sessions) {
+        for (const q of s.questions) questions.push(Object.assign({}, q, { kp_id: s.kp_id, kp_name: s.kp_name, review_count: s.review_count }));
+      }
+      quiz = { questions, answers: {}, done: {}, idx: 0 };
+      // 题型兜底：有≥2个选项就当选择题作答；选择题缺选项则按填空题作答
+      for (const q of quiz.questions) {
+        const has = Array.isArray(q.choices) && q.choices.length >= 2;
+        if (has && q.question_type !== 0) q.question_type = 0;
+        else if (!has && q.question_type === 0) { q.question_type = 1; q.choices = null; }
+      }
+      renderQuestion();
+    } catch (e) {
+      toast('出题失败：' + e.message, 'err');
+      qv.classList.add('hidden');
+      document.getElementById('due-view').classList.remove('hidden');
+    }
+  }
+
+  async function startReview() {
+    const ids = Array.from(document.querySelectorAll('.task-cb:checked')).map((c) => parseInt(c.value));
+    if (!ids.length) { toast('请先选择要复习的知识点', 'err'); return; }
+    beginQuiz(ids);
+  }
+
+  function startEarlyReview(kpId) {
+    if (!confirm('该知识点计划明天复习。按艾宾浩斯遗忘曲线在最佳时间复习更省力、更高效、记忆更长久，确定要提前到现在复习吗？')) return;
+    beginQuiz([kpId]);
+  }
+
+  // 本地归一化（与后端批改一致：忽略大小写与常见标点/空白）
+  function normText(s) {
+    return String(s == null ? '' : s).toLowerCase().replace(/[\s，。、,.！!？?：:；;""''（）()【】\[\]]/g, '');
+  }
+
+  function renderQuestion() {
+    const q = quiz.questions[quiz.idx];
+    const n = quiz.questions.length;
+    document.getElementById('quiz-progress').textContent = `第 ${quiz.idx + 1} / ${n} 题 · ${q.kp_name} · ${TYPE_LABEL[q.question_type] || '简答'}`;
+    const saved = quiz.answers[q.id] || '';
+    const answered = !!quiz.done[q.id];
+    let inputHtml = '';
+    if (q.question_type === 0) {
+      inputHtml = '<div class="space-y-2 mt-4" id="choice-box">' + (q.choices || []).map((c, i) => `
+        <button onclick="choose(${q.id}, ${i}, this)" data-idx="${i}" data-txt="${esc(c)}"
+          class="w-full text-left border border-slate-200 hover:border-indigo-300 rounded-xl px-4 py-3 text-sm transition-colors">
+          <span class="font-semibold text-slate-400 mr-2">${String.fromCharCode(65 + i)}</span><span>${esc(c)}</span>
+        </button>`).join('') + '</div>';
+    } else {
+      inputHtml = `<textarea id="text-answer" rows="5" ${answered ? 'disabled' : ''} placeholder="请输入你的答案…"
+        class="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm mt-4 focus:ring-2 focus:ring-indigo-500 outline-none ${answered ? 'bg-slate-50' : ''}">${esc(saved)}</textarea>`;
+    }
+    document.getElementById('quiz-body').innerHTML = `
+      <div class="text-lg font-medium text-slate-800 leading-relaxed">${renderRich(q.question_text)}</div>
+      ${inputHtml}
+      <div id="feedback-box"></div>
+      <div class="flex justify-between items-center mt-6">
+        <button onclick="prevQ()" class="text-sm text-slate-600 px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 ${quiz.idx === 0 ? 'invisible' : ''}">上一题</button>
+        <div class="flex gap-2">
+          ${q.question_type !== 0 && !answered ? '<button onclick="submitAnswer()" class="text-sm font-medium bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700">提交本题</button>' : ''}
+          <button id="next-btn" onclick="nextQ()" ${answered ? '' : 'disabled'}
+            class="text-sm font-medium ${answered ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-300 cursor-not-allowed'} text-white px-5 py-2 rounded-lg">${quiz.idx === n - 1 ? '完成并批改' : '下一题'}</button>
+        </div>
+      </div>`;
+    highlightBlocks(document.getElementById('quiz-body'));
+    if (q.question_type !== 0 && !answered) {
+      document.getElementById('text-answer').addEventListener('input', (e) => quiz.answers[q.id] = e.target.value);
+    }
+    if (answered) applyFeedback(q);
+  }
+
+  // 选择题：点击选项立即判定（按下标取选项文本，避免选项含引号时内联 JS 报错）
+  function choose(qid, idx, btn) {
+    const q = quiz.questions[quiz.idx];
+    if (!q || String(q.id) !== String(qid)) return;
+    if (quiz.done[qid]) return;
+    const text = (q.choices || [])[idx];
+    if (text == null) return;
+    quiz.answers[qid] = text;
+    quiz.done[qid] = true;
+    applyFeedback(q);
+  }
+
+  // 填空/简答：提交本题后锁定并显示结果
+  function submitAnswer() {
+    const q = quiz.questions[quiz.idx];
+    const ta = document.getElementById('text-answer');
+    if (ta) quiz.answers[q.id] = ta.value;
+    if (!(quiz.answers[q.id] || '').trim()) { toast('请先输入答案', 'err'); return; }
+    quiz.done[q.id] = true;
+    applyFeedback(q);
+  }
+
+  function applyFeedback(q) {
+    const ua = quiz.answers[q.id];
+    const box = document.getElementById('feedback-box');
+    if (!box) return;
+    let statusHtml = '';
+    if (q.question_type === 0) {
+      const correct = normText(ua) === normText(q.answer);
+      const correctIdx = (q.choices || []).findIndex((c) => normText(c) === normText(q.answer));
+      const correctLetter = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
+      Array.from(document.querySelectorAll('#choice-box button')).forEach((b) => {
+        b.disabled = true;
+        b.classList.add('cursor-not-allowed');
+        const txt = b.dataset.txt;
+        if (normText(txt) === normText(q.answer)) {
+          b.classList.add('border-emerald-500', 'bg-emerald-50');
+          b.querySelector('span:last-child').insertAdjacentHTML('beforeend', ' <span class="text-emerald-600 font-bold">✓</span>');
+        }
+        if (!correct && normText(txt) === normText(ua)) {
+          b.classList.add('border-rose-500', 'bg-rose-50');
+          b.querySelector('span:last-child').insertAdjacentHTML('beforeend', ' <span class="text-rose-600 font-bold">✗</span>');
+        }
+      });
+      statusHtml = correct
+        ? '<div class="flex items-center gap-2 text-emerald-700 font-medium mt-4"><span class="w-5 h-5 rounded-full bg-emerald-500 text-white text-xs flex items-center justify-center shrink-0">✓</span>回答正确</div>'
+        : '<div class="flex items-center gap-2 text-rose-700 font-medium mt-4"><span class="w-5 h-5 rounded-full bg-rose-500 text-white text-xs flex items-center justify-center shrink-0">✗</span>回答错误，正确选项为：' + (correctLetter || '') + '</div>';
+    } else if (q.question_type === 1) {
+      const filled = (ua || '').trim();
+      const correct = normText(filled) === normText(q.answer);
+      statusHtml = correct
+        ? '<div class="flex items-center gap-2 text-emerald-700 font-medium mt-4"><span class="w-5 h-5 rounded-full bg-emerald-500 text-white text-xs flex items-center justify-center shrink-0">✓</span>回答正确</div>'
+        : '<div class="flex items-center gap-2 text-rose-700 font-medium mt-4"><span class="w-5 h-5 rounded-full bg-rose-500 text-white text-xs flex items-center justify-center shrink-0">✗</span>回答有误，正确答案将在全部作答后展示</div>';
+    } else {
+      statusHtml = '<div class="flex items-center gap-2 text-indigo-600 font-medium mt-4">已作答，将在全部作答后统一批改</div>';
+    }
+    const hint = q.hint || '';
+    const hintHtml = hint ? `
+      <div class="mt-3 p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+        <div class="text-xs font-semibold text-indigo-700 mb-1">知识点简介</div>
+        <div class="text-sm text-indigo-900 leading-relaxed">${renderRich(hint)}</div>
+      </div>` : '';
+    box.innerHTML = statusHtml + hintHtml;
+    highlightBlocks(box);
+    const nb = document.getElementById('next-btn');
+    if (nb) {
+      nb.disabled = false;
+      nb.classList.remove('bg-slate-300', 'cursor-not-allowed');
+      nb.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+    }
+    if (box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function prevQ() {
+    if (quiz.idx > 0) { quiz.idx--; renderQuestion(); }
+  }
+
+  function nextQ() {
+    const q = quiz.questions[quiz.idx];
+    if (!quiz.done[q.id]) { toast('请先作答本题', 'err'); return; }
+    if (quiz.idx < quiz.questions.length - 1) { quiz.idx++; renderQuestion(); }
+    else submitAll();
+  }
+
+  function abortQuiz() {
+    if (!confirm('退出后本次作答不保存，确定？')) return;
+    quiz = null;
+    document.getElementById('quiz-view').classList.add('hidden');
+    document.getElementById('due-view').classList.remove('hidden');
+    loadDue();
+  }
+
+  async function submitAll() {
+    const answers = quiz.questions.map((q) => ({ q_id: q.id, user_answer: quiz.answers[q.id] || '' }));
+    document.getElementById('quiz-body').innerHTML = '<div class="py-12">' + spinner('正在批改…') + '</div>';
+    try {
+      results = await api('/review/submit', { method: 'POST', body: JSON.stringify({ answers }) });
+      renderResult();
+    } catch (e) {
+      toast('批改失败：' + e.message, 'err');
+      renderQuestion();
+    }
+  }
+
+  function renderResult() {
+    document.getElementById('quiz-view').classList.add('hidden');
+    const rv = document.getElementById('result-view');
+    rv.classList.remove('hidden');
+    const cards = results.results.map((r) => {
+      const color = r.score >= 80 ? 'text-emerald-600' : r.score >= 60 ? 'text-indigo-600' : 'text-rose-600';
+      return `
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between">
+          <h3 class="font-semibold text-slate-800">${esc(r.kp_name)}</h3>
+          <span class="text-2xl font-bold ${color}">${r.score}<span class="text-sm">分</span></span>
+        </div>
+        <div class="mt-3">掌握度：${r.master_rate}% <span class="inline-block w-28 ml-2 align-middle">${progressBar(r.master_rate)}</span></div>
+        <div class="text-xs text-slate-500 mt-3">下次复习：${fmtTime(r.next_review_time)}</div>
+        <div class="text-xs mt-3 p-3 rounded-xl ${r.score >= 60 ? 'bg-slate-50 text-slate-600' : 'bg-rose-50 text-rose-600'}">${esc(r.suggestion)}</div>
+      </div>`;
+    }).join('');
+    // 逐题回顾（批改后才可查看答案）
+    const details = (results.details || []).map((d) => {
+      const ok = d.score >= 60;
+      const choicesHtml = d.question_type === 0 && Array.isArray(d.choices) ? '<div class="mt-2 space-y-1">' + d.choices.map((c, i) => {
+        const isCorrect = normText(c) === normText(d.answer);
+        const isChosen = normText(c) === normText(d.your_answer);
+        const cls = isCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : (isChosen ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-500');
+        const mark = isCorrect ? '<b class="ml-1 text-emerald-600">✓</b>' : (isChosen ? '<b class="ml-1 text-rose-600">✗</b>' : '');
+        return `<div class="border rounded-lg px-3 py-2 text-xs ${cls}">${String.fromCharCode(65 + i)}. ${esc(c)}${mark}</div>`;
+      }).join('') + '</div>' : '';
+      const yourAnswer = d.question_type === 0 ? '' : `<div class="text-xs text-slate-600 mt-2">你的作答：<span class="${ok ? 'text-emerald-700' : 'text-rose-700'}">${esc(d.your_answer) || '（未作答）'}</span></div>`;
+      return `
+      <div class="bg-white rounded-2xl shadow-sm border ${ok ? 'border-emerald-200' : 'border-rose-200'} p-5">
+        <div class="flex items-start justify-between gap-3">
+          <div class="text-sm font-medium text-slate-800 leading-relaxed">${renderRich(d.question_text)}</div>
+          <span class="text-lg font-bold ${ok ? 'text-emerald-600' : 'text-rose-600'} shrink-0">${ok ? '✓' : '✗'}</span>
+        </div>
+        ${choicesHtml}
+        ${yourAnswer}
+        <div class="text-xs text-emerald-700 mt-1">正确答案：${renderRich(d.answer)}</div>
+        ${d.hint ? `<div class="text-xs mt-2 p-3 bg-indigo-50 rounded-lg text-indigo-800">${renderRich(d.hint)}</div>` : ''}
+      </div>`;
+    }).join('');
+    const wrongCount = results.results.filter((r) => r.score < 60).length;
+    rv.innerHTML = `
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center gap-2 text-sm font-semibold mb-2 px-3 py-1 rounded-full ${wrongCount === 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}">${wrongCount === 0 ? '全部掌握' : '需要加强'}</div>
+        <h2 class="text-xl font-bold text-slate-800">本次复习完成</h2>
+        <p class="text-sm text-slate-500 mt-1">${wrongCount === 0 ? '全部掌握，继续保持！' : wrongCount + ' 个知识点需要加强，已加入错题本'}</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">${cards}</div>
+      ${details ? '<h3 class="text-lg font-semibold text-slate-800 mb-3">逐题回顾（查看答案）</h3><div class="space-y-3 mb-6">' + details + '</div>' : ''}
+      <div class="flex justify-center gap-3">
+        <a href="/errorbook" class="text-sm font-medium bg-white border border-slate-300 text-slate-700 px-5 py-2.5 rounded-lg hover:bg-slate-50">查看错题本</a>
+        <a href="/" class="text-sm font-medium bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700">返回仪表盘</a>
+      </div>`;
+    highlightBlocks(rv);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  loadDue();</script>
+</body>
+</html>

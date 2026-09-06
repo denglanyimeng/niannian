@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>设置 · 念念</title>
+  <script src="/vendor/tailwind.js"></script>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#8ec5f0">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="bg-slate-100">
+  <script>window.PAGE = 'settings';</script>
+  <div id="nav-root"></div>
+  <div id="page-content">
+    <h1 class="text-2xl font-bold text-slate-800 mb-1">系统设置</h1>
+    <p class="text-sm text-slate-500 mb-6">配置大模型接口、自定义请求模板与复习间隔</p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="space-y-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h2 class="font-semibold text-slate-800 mb-4">大模型接口</h2>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">接口地址（API URL）</label>
+              <input id="api-url" type="text" placeholder="https://api.deepseek.com/chat/completions"
+                class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+              <p class="text-xs text-slate-400 mt-1">支持任何 OpenAI 兼容格式的大模型接口</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">API Key</label>
+              <div class="flex gap-2">
+                <input id="api-key" type="password" placeholder="留空表示不修改"
+                  class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <button onclick="toggleKey()" class="text-sm text-slate-500 px-3 rounded-lg border border-slate-300 hover:bg-slate-50">显示</button>
+              </div>
+              <p class="text-xs text-slate-400 mt-1"><span id="key-status" class="text-emerald-600 font-medium"></span>密钥将加密后存入本地数据库，不会明文保存。</p>
+            </div>
+            <div class="flex gap-3">
+              <button onclick="testConn()" class="text-sm font-medium bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700">测试连接</button>
+              <button onclick="saveConfig()" class="text-sm font-medium bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">保存设置</button>
+            </div>
+            <div id="test-result" class="text-sm"></div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h2 class="font-semibold text-slate-800 mb-4">复习间隔（天）</h2>
+          <p class="text-xs text-slate-400 mb-3">标准艾宾浩斯遗忘周期，依次为每次复习后间隔天数。掌握度会自动动态调整。</p>
+          <div id="interval-editor"></div>
+          <button onclick="saveIntervals()" class="mt-4 text-sm font-medium bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">保存间隔</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <h2 class="font-semibold text-slate-800 mb-2">自定义请求体模板</h2>
+        <p class="text-xs text-slate-400 mb-3">JSON 模板，支持占位符：<code class="bg-slate-100 px-1 rounded">{{system_prompt}}</code> <code class="bg-slate-100 px-1 rounded">{{prompt}}</code> <code class="bg-slate-100 px-1 rounded">{{content}}</code> <code class="bg-slate-100 px-1 rounded">{{image_data_url}}</code> <code class="bg-slate-100 px-1 rounded">{{api_key}}</code> <code class="bg-slate-100 px-1 rounded">{{model}}</code></p>
+        <div class="flex gap-2 mb-3">
+          <button onclick="loadPreset('text')" class="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-200">模板预设：文本模型（DeepSeek）</button>
+          <button onclick="loadPreset('vision')" class="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-200">模板预设：视觉模型（支持图片）</button>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">上传图片时，应用会优先用本地 OCR 离线识别文字（DeepSeek 等文字模型也能解析照片）；视觉模型模板则直接把图片发给大模型。</p>
+        <textarea id="template-editor" rows="18" spellcheck="false"
+          class="code-editor w-full font-mono text-xs border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none bg-slate-50"></textarea>
+        <div class="flex gap-3 mt-3">
+          <button onclick="saveTemplate()" class="text-sm font-medium bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">保存模板</button>
+          <button onclick="resetTemplate()" class="text-sm text-slate-600 px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">恢复默认</button>
+        </div>
+        <div id="template-status" class="text-sm mt-2"></div>
+      </div>
+    </div>
+  </div>
+  <script src="/js/app.js"></script>
+  <script>
+  const DEFAULT_TEMPLATE = {
+    model: 'deepseek-chat',
+    messages: [
+      { role: 'system', content: '{{system_prompt}}' },
+      { role: 'user', content: '{{prompt}}' }
+    ],
+    temperature: 0.7
+  };
+  let cfg = null;
+
+  function keyStatus() {
+    document.getElementById('key-status').textContent = cfg && cfg.has_api_key ? '已保存密钥' : '未配置密钥';
+  }
+
+  function renderIntervals() {
+    const arr = (cfg && cfg.ebbinghaus_default) || [1, 2, 4, 7, 15, 30, 60];
+    document.getElementById('interval-editor').innerHTML =
+      '<div class="flex flex-wrap gap-2 items-center">' + arr.map((v, i) => `
+        <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
+          <span class="text-xs text-slate-500">第${i + 1}次</span>
+          <input type="number" min="0" value="${v}" data-idx="${i}" class="w-14 border border-slate-200 rounded px-1.5 py-0.5 text-sm text-center">
+          <span class="text-xs text-slate-400">天</span>
+        </div>`).join('') +
+      '<button onclick="addInterval()" class="text-xs text-indigo-600 border border-indigo-200 rounded-lg px-2 py-1 hover:bg-indigo-50">＋</button></div>';
+  }
+
+  function addInterval() {
+    const last = cfg.ebbinghaus_default.length ? cfg.ebbinghaus_default[cfg.ebbinghaus_default.length - 1] : 30;
+    cfg.ebbinghaus_default.push(last * 2);
+    renderIntervals();
+  }
+
+  async function load() {
+    try {
+      cfg = await api('/config');
+      document.getElementById('api-url').value = cfg.api_url || '';
+      document.getElementById('template-editor').value = JSON.stringify(cfg.request_body_template || DEFAULT_TEMPLATE, null, 2);
+      keyStatus();
+      renderIntervals();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function collectBody() {
+    return { api_url: document.getElementById('api-url').value.trim(), api_key: document.getElementById('api-key').value };
+  }
+
+  async function saveConfig() {
+    try {
+      await api('/config', { method: 'PUT', body: JSON.stringify(collectBody()) });
+      cfg = await api('/config');
+      keyStatus();
+      toast('设置已保存', 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function testConn() {
+    const box = document.getElementById('test-result');
+    box.innerHTML = spinner('正在测试连接…');
+    try {
+      const body = collectBody();
+      let tpl;
+      try { tpl = JSON.parse(document.getElementById('template-editor').value); } catch (e) { tpl = null; }
+      if (tpl) body.request_body_template = tpl;
+      const r = await api('/config/test', { method: 'POST', body: JSON.stringify(body) });
+      box.innerHTML = '<div class="text-emerald-600 font-medium mt-3">连接成功：' + esc(r.reply) + '</div>';
+    } catch (e) {
+      box.innerHTML = '<div class="text-rose-600 font-medium mt-3">' + esc(e.message) + '</div>';
+    }
+  }
+
+  async function saveTemplate() {
+    let tpl;
+    try { tpl = JSON.parse(document.getElementById('template-editor').value); }
+    catch (e) { toast('模板 JSON 格式错误：' + e.message, 'err'); return; }
+    try {
+      await api('/config', { method: 'PUT', body: JSON.stringify({ request_body_template: tpl }) });
+      cfg = await api('/config');
+      toast('模板已保存', 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  const VISION_TEMPLATE = {
+    model: 'glm-4v-flash',
+    messages: [
+      { role: 'system', content: '{{system_prompt}}' },
+      { role: 'user', content: [
+        { type: 'text', text: '{{prompt}}' },
+        { type: 'image_url', image_url: { url: '{{image_data_url}}' } }
+      ]}
+    ],
+    temperature: 0.7
+  };
+
+  function loadPreset(kind) {
+    const t = kind === 'vision' ? VISION_TEMPLATE : DEFAULT_TEMPLATE;
+    document.getElementById('template-editor').value = JSON.stringify(t, null, 2);
+    toast(kind === 'vision' ? '已载入视觉模型模板（支持图片），记得把 model 改成你所用模型' : '已载入文本模型模板', 'info');
+  }
+
+  function resetTemplate() {
+    document.getElementById('template-editor').value = JSON.stringify(DEFAULT_TEMPLATE, null, 2);
+  }
+
+  async function saveIntervals() {
+    const inputs = document.querySelectorAll('#interval-editor input[type=number]');
+    const arr = Array.from(inputs).map((i) => Math.max(0, parseInt(i.value) || 0));
+    try {
+      await api('/config', { method: 'PUT', body: JSON.stringify({ ebbinghaus_default: arr }) });
+      cfg = await api('/config');
+      renderIntervals();
+      toast('复习间隔已保存', 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function toggleKey() {
+    const el = document.getElementById('api-key');
+    el.type = el.type === 'password' ? 'text' : 'password';
+  }
+
+  load();
+  </script>
+</body>
+</html>

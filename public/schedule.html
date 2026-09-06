@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>时间安排 · 念念</title>
+  <script src="/vendor/tailwind.js"></script>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#8ec5f0">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="bg-slate-100">
+  <script>window.PAGE = 'schedule';</script>
+  <div id="nav-root"></div>
+  <div id="page-content">
+    <h1 class="text-2xl font-bold text-slate-800 mb-1">时间安排</h1>
+    <p class="text-sm text-slate-500 mb-6">可设置多个空闲复习时段（默认 3 个），系统按艾宾浩斯周期自动分配任务</p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <h2 class="font-semibold text-slate-800 mb-4">空闲时段</h2>
+        <div id="slot-editor" class="space-y-2"></div>
+        <div class="flex flex-wrap items-center gap-3 mt-4">
+          <button onclick="addSlotRow()" class="text-sm border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">＋ 添加时段</button>
+          <button onclick="saveSlots()" class="text-sm font-medium bg-indigo-600 text-white px-5 py-2 rounded-lg hover:bg-indigo-700">保存时段</button>
+          <span id="slot-tip" class="text-xs text-slate-400"></span>
+        </div>
+        <p class="text-xs text-slate-400 mt-3">循环周期：每日 / 每 2 天 / 每 3 天。留空的行保存时会被忽略。</p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold text-slate-800">今日复习计划</h2>
+          <a href="/review" class="text-sm text-indigo-600 hover:underline">开始复习 →</a>
+        </div>
+        <div id="plan-area"></div>
+      </div>
+    </div>
+  </div>
+  <script src="/js/app.js"></script>
+  <script>
+  const CYCLE_LABEL = ['每日', '每 2 天', '每 3 天'];
+  const DEFAULT_ROWS = [
+    { start_time: '19:00', end_time: '21:00', cycle_type: 0, enabled: 1 },
+    { start_time: '12:00', end_time: '13:00', cycle_type: 0, enabled: 1 },
+    { start_time: '08:00', end_time: '09:00', cycle_type: 1, enabled: 1 }
+  ];
+  let deletedIds = [];
+
+  function rowHtml(r) {
+    const s = r || {};
+    return `
+      <div class="slot-row flex flex-wrap items-center gap-2 bg-slate-50 rounded-xl px-4 py-3">
+        <span class="slot-id hidden">${s.id || ''}</span>
+        <input type="time" class="slot-start w-28 border border-slate-300 rounded-lg px-2 py-1.5 text-sm" value="${esc(s.start_time || '')}">
+        <span class="text-xs text-slate-400">至</span>
+        <input type="time" class="slot-end w-28 border border-slate-300 rounded-lg px-2 py-1.5 text-sm" value="${esc(s.end_time || '')}">
+        <select class="slot-cycle border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white">
+          <option value="0" ${s.cycle_type === 1 ? '' : 'selected'}>每日</option>
+          <option value="1" ${s.cycle_type === 1 ? 'selected' : ''}>每 2 天</option>
+          <option value="2" ${s.cycle_type === 2 ? 'selected' : ''}>每 3 天</option>
+        </select>
+        <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+          <input type="checkbox" class="slot-enabled accent-indigo-600" ${s.enabled === 0 ? '' : 'checked'}> 启用
+        </label>
+        <button onclick="removeSlotRow(this)" class="text-xs bg-rose-50 text-rose-600 px-2.5 py-1.5 rounded-lg hover:bg-rose-100">删除</button>
+      </div>`;
+  }
+
+  function addSlotRow(slot) {
+    document.getElementById('slot-editor').insertAdjacentHTML('beforeend', rowHtml(slot));
+  }
+
+  function removeSlotRow(btn) {
+    const row = btn.closest('.slot-row');
+    const id = row.querySelector('.slot-id').textContent.trim();
+    if (id) deletedIds.push(parseInt(id));
+    row.remove();
+    document.getElementById('slot-tip').textContent = deletedIds.length ? '有 ' + deletedIds.length + ' 个时段待删除，点“保存时段”生效' : '';
+  }
+
+  async function loadSlots() {
+    try {
+      const rows = await api('/freetime');
+      const box = document.getElementById('slot-editor');
+      box.innerHTML = '';
+      if (rows.length) {
+        rows.forEach((r) => addSlotRow(r));
+        // 不满 3 个时补齐空行
+        for (let i = rows.length; i < 3; i++) addSlotRow({ start_time: '', end_time: '', cycle_type: 0, enabled: 1 });
+      } else {
+        DEFAULT_ROWS.forEach((r) => addSlotRow(r));
+      }
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function saveSlots() {
+    const rows = Array.from(document.querySelectorAll('.slot-row')).map((row) => ({
+      id: parseInt(row.querySelector('.slot-id').textContent.trim() || '0'),
+      start_time: row.querySelector('.slot-start').value,
+      end_time: row.querySelector('.slot-end').value,
+      cycle_type: parseInt(row.querySelector('.slot-cycle').value),
+      enabled: row.querySelector('.slot-enabled').checked ? 1 : 0
+    }));
+    const valid = [];
+    for (const r of rows) {
+      if (!r.start_time || !r.end_time) continue; // 留空行忽略
+      if (r.start_time >= r.end_time) { toast('时段结束时间必须晚于开始时间：' + r.start_time + ' - ' + r.end_time, 'err'); return; }
+      valid.push(r);
+    }
+    if (!valid.length) { toast('请至少填写一个完整时段', 'err'); return; }
+    try {
+      for (const r of valid) {
+        const body = { start_time: r.start_time, end_time: r.end_time, cycle_type: r.cycle_type, enabled: r.enabled };
+        if (r.id) await api('/freetime/' + r.id, { method: 'PUT', body: JSON.stringify(body) });
+        else await api('/freetime', { method: 'POST', body: JSON.stringify(body) });
+      }
+      for (const id of deletedIds) { try { await api('/freetime/' + id, { method: 'DELETE' }); } catch (e) {} }
+      deletedIds = [];
+      toast('时段已保存（' + valid.length + ' 个）', 'ok');
+      loadSlots();
+      loadPlan();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function loadPlan() {
+    try {
+      const d = await api('/review/due');
+      const box = document.getElementById('plan-area');
+      const typeLabel = { 0: '选择题', 1: '填空题', 2: '简答题' };
+      if (!d.tasks.length && !d.overloaded.length) {
+        box.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">今天没有到期任务</div>' + capacityLine(d);
+        return;
+      }
+      const items = d.tasks.map((t) => `
+        <div class="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-3">
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-slate-800 text-sm truncate">${esc(t.name)}</div>
+            <div class="text-xs text-slate-500 mt-0.5">${t.urgency_hours > 0 ? '<span class="text-rose-500">超期 ' + t.urgency_hours + 'h</span> · ' : ''}${t.duration_minutes} 分钟 · 第 ${t.review_count + 1} 次复习（${typeLabel[t.question_type] || '简答'}）</div>
+          </div>
+          <span class="text-xs text-slate-500 shrink-0">原计划 ${fmtTime(t.due_at)}</span>
+        </div>`).join('');
+      const overload = d.overloaded.length ? `<div class="text-xs text-amber-600 bg-amber-50 rounded-xl px-4 py-3 mt-3">${d.overloaded.length} 个任务超出今日容量已顺延：${esc(d.overloaded.map((o) => o.name).join('、'))}</div>` : '';
+      box.innerHTML = items + overload + capacityLine(d);
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function capacityLine(d) {
+    return `<div class="text-xs text-slate-400 mt-3">今日空闲容量 ${d.capacity_minutes} 分钟，已安排 ${d.used_minutes} 分钟。</div>`;
+  }
+
+  loadSlots();
+  loadPlan();
+  </script>
+</body>
+</html>

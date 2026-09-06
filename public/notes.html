@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>笔记录入 · 念念</title>
+  <script src="/vendor/tailwind.js"></script>
+  <link rel="stylesheet" href="/vendor/prism-tomorrow.min.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#8ec5f0">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="bg-slate-100">
+  <script>window.PAGE = 'notes';</script>
+  <div id="nav-root"></div>
+  <div id="page-content">
+    <h1 class="text-2xl font-bold text-slate-800 mb-1">笔记录入 · 复习块模式</h1>
+    <p class="text-sm text-slate-500 mb-6">整篇笔记作为一次复习块：先 AI 总结确认识别无误 → AI 提炼复习要点 → 保存后整体安排复习，不再拆成零散知识点</p>
+
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-2 text-xs sm:text-sm mb-6" id="steps">
+      <span class="px-3 py-1 rounded-full font-medium bg-indigo-600 text-white" id="stp-1">1 · 解析全文</span>
+      <span class="text-slate-300">→</span>
+      <span class="px-3 py-1 rounded-full font-medium bg-slate-200 text-slate-500" id="stp-2">2 · 确认总结</span>
+      <span class="text-slate-300">→</span>
+      <span class="px-3 py-1 rounded-full font-medium bg-slate-200 text-slate-500" id="stp-3">3 · 提炼要点</span>
+      <span class="text-slate-300">→</span>
+      <span class="px-3 py-1 rounded-full font-medium bg-slate-200 text-slate-500" id="stp-4">4 · 保存复习块</span>
+    </div>
+
+    <!-- 第 1 步：上传 / 输入 -->
+    <div id="step-input" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div>
+          <h2 class="font-semibold text-slate-800 mb-3">上传素材</h2>
+          <div id="dropzone" class="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/40 transition-colors">
+            <div class="text-3xl mb-2"></div>
+            <div class="text-sm text-slate-600">点击选择或拖拽文件到此处</div>
+            <div class="text-xs text-slate-400 mt-1">支持图片（JPG / PNG / WebP）与 PDF，最大 20MB</div>
+            <div class="text-xs text-indigo-500 mt-2">图片会先离线识别文字，再交给 AI 总结</div>
+            <input id="file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf" class="hidden">
+          </div>
+          <div id="file-info" class="hidden mt-3 text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2"></div>
+        </div>
+        <div>
+          <h2 class="font-semibold text-slate-800 mb-3">手动输入 / 粘贴笔记</h2>
+          <textarea id="text-input" rows="10" placeholder="直接粘贴整篇笔记文本…&#10;&#10;支持代码块，例如：&#10;&#10;```go&#10;m := make(map[string]int)&#10;```"
+            class="w-full border border-slate-300 rounded-lg p-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 mt-4">
+        <button onclick="analyze()" class="text-sm font-medium bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700">开始解析全文</button>
+        <span class="text-xs text-slate-400">未配置 AI 接口或接口异常时，自动使用本地识别模式。</span>
+      </div>
+    </div>
+
+    <!-- 第 2 步：全文 + AI 总结确认 -->
+    <div id="step-summary" class="hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-slate-800">识别出的笔记全文</h2>
+          <div class="flex gap-2">
+            <span id="source-badge" class="text-[11px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full"></span>
+            <button onclick="togglePreview()" id="preview-toggle" class="text-xs border border-slate-300 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-50">预览高亮</button>
+          </div>
+        </div>
+        <textarea id="full-text" rows="10" class="w-full border border-slate-300 rounded-lg p-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+        <div id="full-preview" class="hidden"></div>
+        <p class="text-xs text-slate-400 mt-2">请核对 AI 是否正确识别了你的笔记，如有错误可直接在文本框修改。</p>
+
+        <h2 class="font-semibold text-slate-800 mt-6 mb-2">AI 总结（确认是否抓住核心内容）</h2>
+        <textarea id="ai-summary" rows="5" class="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+        <div class="flex flex-wrap items-center gap-3 mt-4">
+          <button onclick="genPoints()" class="text-sm font-medium bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700">确认无误，AI 提炼要点</button>
+          <button onclick="reSummary()" class="text-sm border border-slate-300 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-50">重新生成总结</button>
+          <button onclick="backToInput()" class="text-sm text-slate-400 px-3 py-2 hover:text-slate-600">← 返回修改</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 第 3+4 步：要点编辑 + 保存 -->
+    <div id="step-points" class="hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-slate-800">AI 提炼的复习要点</h2>
+          <div class="flex gap-2">
+            <button onclick="regenPoints()" class="text-xs border border-slate-300 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-50">重新生成</button>
+            <button onclick="backToSummary()" class="text-xs text-slate-400 px-3 py-1.5 hover:text-slate-600">← 上一步</button>
+          </div>
+        </div>
+        <p class="text-xs text-slate-500 mb-4">这些要点不是对原文机械分段，而是结合整篇内容的概括；每个要点都可以自由修改，出题时按要点出题、选择题优先全覆盖。要点内可用 <code>```语言名</code> 包裹代码示例。</p>
+        <div id="points-box" class="space-y-3"></div>
+        <button onclick="addPointRow()" class="mt-3 text-xs border border-dashed border-indigo-300 text-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-50">＋ 添加要点</button>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 pt-5 border-t border-slate-100">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">复习块名称 *</label>
+            <input id="block-name" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="例如：Go 语言 map 用法总结">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">标签（逗号分隔）</label>
+            <input id="block-tags" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Go, 编程基础">
+          </div>
+        </div>
+        <div class="flex items-center gap-3 mt-5">
+          <button onclick="saveBlock()" class="text-sm font-medium bg-emerald-600 text-white px-6 py-2.5 rounded-lg hover:bg-emerald-700">保存为复习块</button>
+          <span class="text-xs text-slate-400">整篇笔记会作为一个复习块保存，并自动安排首次复习时间。</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/vendor/prism.min.js"></script>
+  <script src="/vendor/prism-clike.min.js"></script>
+  <script src="/vendor/prism-c.min.js"></script>
+  <script src="/vendor/prism-cpp.min.js"></script>
+  <script src="/vendor/prism-sql.min.js"></script>
+  <script src="/vendor/prism-go.min.js"></script>
+  <script src="/vendor/prism-java.min.js"></script>
+  <script src="/vendor/prism-python.min.js"></script>
+  <script src="/vendor/prism-javascript.min.js"></script>
+  <script src="/vendor/prism-typescript.min.js"></script>
+  <script src="/vendor/prism-markup.min.js"></script>
+  <script src="/vendor/prism-json.min.js"></script>
+  <script src="/vendor/prism-css.min.js"></script>
+  <script src="/vendor/prism-bash.min.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+  const TYPE_SRC = { manual: '手动输入', image: '图片', 'image-ocr': '图片（离线识别）', 'image-ai': '图片（AI 视觉识别）', pdf: 'PDF 解析' };
+  let state = { text: '', summary: '', title: '', points: [] };
+  let previewOn = false;
+
+  const dz = document.getElementById('dropzone');
+  const fileInput = document.getElementById('file-input');
+  dz.onclick = () => fileInput.click();
+  fileInput.onchange = () => selectFile(fileInput.files[0]);
+  dz.ondragover = (e) => { e.preventDefault(); dz.classList.add('border-indigo-500', 'bg-indigo-50'); };
+  dz.ondragleave = () => dz.classList.remove('border-indigo-500', 'bg-indigo-50');
+  dz.ondrop = (e) => { e.preventDefault(); dz.classList.remove('border-indigo-500', 'bg-indigo-50'); selectFile(e.dataTransfer.files[0]); };
+
+  function selectFile(file) {
+    if (!file) return;
+    const info = document.getElementById('file-info');
+    info.classList.remove('hidden');
+    info.textContent = '已选择：' + file.name + '（' + (file.size / 1024).toFixed(1) + ' KB）';
+    window.selectedFile = file;
+  }
+
+  function setStep(n) {
+    ['stp-1', 'stp-2', 'stp-3', 'stp-4'].forEach((id, i) => {
+      const el = document.getElementById(id);
+      const active = i < n;
+      el.className = 'px-3 py-1 rounded-full font-medium ' + (active ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500');
+    });
+  }
+
+  async function analyze() {
+    const text = document.getElementById('text-input').value.trim();
+    const file = window.selectedFile;
+    if (!text && !file) { toast('请先上传文件或输入文本', 'err'); return; }
+    const btn = event && event.target;
+    if (btn) btn.disabled = true;
+    try {
+      const fd = new FormData();
+      if (file) fd.append('file', file);
+      else fd.append('text', text);
+      const res = await fetch('/api/notes/analyze', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || '解析失败');
+      if (data.error) { toast(data.error, 'err'); return; }
+      state.text = data.text || '';
+      state.summary = (data.summary && data.summary.summary) || '';
+      state.title = (data.summary && data.summary.title) || '';
+      document.getElementById('source-badge').textContent = TYPE_SRC[data.source] || data.source;
+      document.getElementById('step-input').classList.add('hidden');
+      document.getElementById('step-summary').classList.remove('hidden');
+      document.getElementById('full-text').value = state.text;
+      document.getElementById('ai-summary').value = state.summary;
+      document.getElementById('block-name').value = state.title;
+      setStep(2);
+      window.selectedFile = null;
+      document.getElementById('file-info').classList.add('hidden');
+      toast('全文解析完成，请核对', 'ok');
+    } catch (e) {
+      toast('解析失败：' + e.message, 'err');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function togglePreview() {
+    previewOn = !previewOn;
+    const ta = document.getElementById('full-text');
+    const pv = document.getElementById('full-preview');
+    const btn = document.getElementById('preview-toggle');
+    ta.classList.toggle('hidden', previewOn);
+    pv.classList.toggle('hidden', !previewOn);
+    btn.textContent = previewOn ? '编辑文本' : '预览高亮';
+    if (previewOn) {
+      pv.innerHTML = renderRich(ta.value);
+      highlightBlocks(pv);
+    }
+  }
+
+  function syncFromText() {
+    if (previewOn) togglePreview();
+  }
+
+  async function reSummary() {
+    state.text = document.getElementById('full-text').value;
+    try {
+      toast('正在重新总结…', 'info');
+      const r = await api('/notes/analyze', { method: 'POST', body: JSON.stringify({ text: state.text }) });
+      if (r.summary) {
+        state.summary = r.summary.summary || '';
+        state.title = r.summary.title || '';
+        document.getElementById('ai-summary').value = state.summary;
+        document.getElementById('block-name').value = state.title;
+        toast('已重新生成总结', 'ok');
+      }
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function genPoints() {
+    state.text = document.getElementById('full-text').value;
+    state.summary = document.getElementById('ai-summary').value.trim();
+    if (!state.text.trim()) { toast('笔记全文为空，请先输入', 'err'); return; }
+    document.getElementById('step-summary').classList.add('hidden');
+    document.getElementById('step-points').classList.remove('hidden');
+    document.getElementById('points-box').innerHTML = spinner('AI 正在结合整篇笔记提炼要点…');
+    setStep(3);
+    try {
+      const r = await api('/notes/split', { method: 'POST', body: JSON.stringify({ text: state.text, summary: state.summary }) });
+      state.points = r.points || [];
+      renderPoints();
+      setStep(4);
+    } catch (e) {
+      toast('分点失败：' + e.message, 'err');
+      document.getElementById('points-box').innerHTML = '<div class="text-rose-600 text-sm">分点失败：' + esc(e.message) + '</div>';
+    }
+  }
+
+  async function regenPoints() {
+    document.getElementById('points-box').innerHTML = spinner('AI 正在重新提炼要点…');
+    try {
+      const r = await api('/notes/split', { method: 'POST', body: JSON.stringify({ text: state.text, summary: state.summary }) });
+      state.points = r.points || [];
+      renderPoints();
+    } catch (e) { toast('分点失败：' + e.message, 'err'); }
+  }
+
+  function renderPoints() {
+    const box = document.getElementById('points-box');
+    box.innerHTML = '';
+    if (!state.points.length) state.points = [{ name: '', content: '' }];
+    state.points.forEach((pt) => addPointRow(pt));
+  }
+
+  function addPointRow(pt) {
+    const p = pt || { name: '', content: '' };
+    const box = document.getElementById('points-box');
+    const row = document.createElement('div');
+    row.className = 'point-row bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2';
+    row.innerHTML = `
+      <div class="flex items-center gap-2">
+        <span class="text-[11px] text-slate-400 shrink-0">要点</span>
+        <input class="pt-name flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm" placeholder="要点名称（例如：map 的创建方式）" value="${esc(p.name)}">
+        <button onclick="this.closest('.point-row').remove()" class="text-xs bg-rose-50 text-rose-600 px-2.5 py-1.5 rounded-lg hover:bg-rose-100 shrink-0">删除</button>
+      </div>
+      <textarea rows="3" class="pt-content w-full border border-slate-300 rounded-lg px-3 py-2 text-xs" placeholder="要点内容（概括性描述，可包含代码示例，如：&#10;&#10;\`\`\`go&#10;m := make(map[string]int)&#10;\`\`\`）">${esc(p.content)}</textarea>`;
+    box.appendChild(row);
+  }
+
+  function collectPoints() {
+    return Array.from(document.querySelectorAll('#points-box .point-row')).map((r) => ({
+      name: r.querySelector('.pt-name').value.trim(),
+      content: r.querySelector('.pt-content').value.trim()
+    })).filter((pt) => pt.name || pt.content);
+  }
+
+  async function saveBlock() {
+    const name = document.getElementById('block-name').value.trim();
+    const tags = document.getElementById('block-tags').value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+    const points = collectPoints();
+    state.text = document.getElementById('full-text').value;
+    state.summary = document.getElementById('ai-summary').value.trim();
+    if (!name) { toast('请填写复习块名称', 'err'); return; }
+    if (!points.length) { toast('请至少保留一个复习要点', 'err'); return; }
+    try {
+      const r = await api('/notes/save-block', { method: 'POST', body: JSON.stringify({
+        name, content: state.text, summary: state.summary, points, tags
+      }) });
+      toast('复习块已保存（含 ' + r.point_count + ' 个要点），已自动安排首次复习', 'ok');
+      setTimeout(() => { location.href = '/knowledge'; }, 1200);
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  function backToInput() {
+    document.getElementById('step-summary').classList.add('hidden');
+    document.getElementById('step-input').classList.remove('hidden');
+    setStep(1);
+  }
+  function backToSummary() {
+    document.getElementById('step-points').classList.add('hidden');
+    document.getElementById('step-summary').classList.remove('hidden');
+    setStep(2);
+    document.getElementById('full-text').value = state.text;
+    document.getElementById('ai-summary').value = state.summary;
+  }
+  </script>
+  addCodeToolbar(document.getElementById('full-text'));
+</body>
+</html>

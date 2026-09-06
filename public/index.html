@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>仪表盘 · 念念</title>
+  <script src="/vendor/tailwind.js"></script>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#8ec5f0">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="bg-slate-100">
+  <script>window.PAGE = 'dashboard';</script>
+  <div id="nav-root"></div>
+  <div id="page-content">
+    <h1 class="text-2xl font-bold text-slate-800 mb-1">学习仪表盘</h1>
+    <p class="text-sm text-slate-500 mb-6">今日复习任务与整体掌握情况一览</p>
+    <div class="hero-banner mb-8">
+      <div class="flex items-center gap-2 text-[13px] font-medium mb-3" style="color:#7a94ab">
+        <span class="inline-block w-2.5 h-2.5 rounded-full" style="background:#f2a3c0"></span>
+        今日学习伙伴 · 念念
+      </div>
+      <div class="text-3xl md:text-4xl font-extrabold tracking-tight leading-tight" style="color:#35536e">把每一个知识点，都变成<span style="color:#d0658f">稳稳的掌握</span></div>
+      <p class="text-sm mt-3 max-w-2xl leading-relaxed" style="color:#5f7a90">笔记一键解析成复习块，艾宾浩斯智能调度复习节奏，选择→填空→简答分层出题，由浅入深把记忆刻进脑子里。</p>
+      <div class="flex flex-wrap gap-3 mt-5">
+        <a href="/review" class="inline-flex items-center gap-2 bg-white text-sm font-semibold px-5 py-2.5 rounded-full shadow-sm hover:shadow-md transition" style="color:#3c7ca8">开始今日复习</a>
+        <a href="/notes" class="inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-full hover:opacity-80 transition" style="color:#3c7ca8;background:rgba(142,197,240,0.35)">导入新笔记</a>
+      </div>
+    </div>
+
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-semibold text-slate-800">现在时间</h2>
+          <span id="clock-greet" class="text-sm text-indigo-600"></span>
+        </div>
+        <div id="clock-time" class="text-4xl font-bold text-slate-800 tabular-nums tracking-tight"></div>
+
+        <div id="clock-date" class="text-sm text-slate-500 mt-2"></div>
+        <div class="mt-5 pt-4 border-t border-slate-100">
+          <div id="quote-text" class="text-xl md:text-2xl font-semibold text-slate-800 leading-relaxed"></div>
+          <div class="flex items-center justify-between mt-3">
+            <span id="quote-source" class="text-sm text-slate-500"></span>
+            <button id="quote-next" class="text-sm font-medium text-indigo-600 hover:text-indigo-700 shrink-0">换一句</button>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-slate-800">我的音乐</h2>
+          <button id="player-add" class="text-xs font-medium bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700">添加音乐</button>
+        </div>
+        <input id="player-file" type="file" accept="audio/*" multiple class="hidden">
+        <div id="player-empty" class="text-sm text-slate-400 py-6 text-center border border-dashed border-slate-200 rounded-xl">还没有音乐，点右上角「添加音乐」选择本地音乐文件</div>
+        <div id="player-list" class="space-y-1 max-h-40 overflow-y-auto mb-3"></div>
+        <audio id="player-audio" preload="metadata"></audio>
+        <div class="flex items-center gap-3">
+          <button id="player-prev" class="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><svg viewBox="0 0 24 24" class="w-4 h-4 mx-auto" fill="currentColor" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+          <button id="player-play" class="w-11 h-11 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white"><svg viewBox="0 0 24 24" class="w-5 h-5 mx-auto" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>
+          <button id="player-next" class="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><svg viewBox="0 0 24 24" class="w-4 h-4 mx-auto" fill="currentColor" aria-hidden="true"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+          <div class="flex-1 flex items-center gap-2 min-w-0">
+            <span id="player-cur" class="text-xs text-slate-400 w-10 text-right tabular-nums shrink-0">00:00</span>
+            <input id="player-progress" type="range" min="0" max="100" value="0" class="flex-1 accent-indigo-600 min-w-0">
+            <span id="player-dur" class="text-xs text-slate-400 w-10 tabular-nums shrink-0">00:00</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 mt-3">
+          <span class="text-xs text-slate-400 shrink-0">播放模式</span>
+          <button id="player-mode" class="text-xs font-medium text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100" title="点击切换：顺序播放 / 随机播放 / 单曲循环">顺序播放</button>
+        </div>
+        <div class="flex items-center gap-2 mt-3">
+          <span class="text-xs text-slate-400 shrink-0">音量</span>
+          <input id="player-volume" type="range" min="0" max="1" step="0.05" value="1" class="w-28 accent-indigo-600">
+        </div>
+      </div>
+    </div>
+
+    <div id="stat-cards" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6"></div>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold text-slate-800">未来 7 天复习计划</h2>
+        <span class="text-xs text-slate-400">颜色越深任务越多 · 点击有任务的日期直接开始复习</span>
+      </div>
+      <div id="week-strip" class="grid grid-cols-7 gap-2"></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold text-slate-800">今日待复习</h2>
+          <a href="/review" class="text-sm text-indigo-600 hover:underline">去复习 →</a>
+        </div>
+        <div id="today-list" class="space-y-3"></div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold text-slate-800">空闲时段</h2>
+          <a href="/schedule" class="text-xs text-indigo-600 hover:underline">详细设置 →</a>
+        </div>
+        <div id="home-slots" class="space-y-2"></div>
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+          <button id="home-add-slot" class="text-xs border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50">＋ 添加时段</button>
+          <button id="home-save-slots" class="text-xs font-medium bg-indigo-600 text-white px-4 py-1.5 rounded-lg hover:bg-indigo-700">保存时段</button>
+          <span id="home-slot-tip" class="text-xs text-slate-400"></span>
+        </div>
+        <p class="text-xs text-slate-400 mt-2">循环周期：每日 / 每 2 天 / 每 3 天，留空的行保存时忽略</p>
+      </div>
+    </div>
+  </div>
+  <script src="/js/app.js"></script>
+  <script>
+const CYCLE_LABEL = ['每日', '每 2 天', '每 3 天'];
+  let homeDeletedIds = [];
+
+  function renderCards(stats) {
+    const cards = [
+      { label: '今日待复习', value: stats.due_today, sub: stats.overdue_count + ' 个已过临界点', color: 'bg-indigo-50 text-indigo-600', href: '/review' },
+      { label: '知识点总数', value: stats.total_kps, sub: stats.mastered_count + ' 个掌握良好', color: 'bg-rose-50 text-rose-600', href: '/knowledge' },
+      { label: '平均掌握度', value: stats.avg_master_rate + '%', sub: '累计复习 ' + stats.review_total + ' 次', color: 'bg-indigo-50 text-indigo-600', href: '/knowledge' },
+      { label: '错题收藏', value: stats.error_total, sub: '空闲时段 ' + stats.free_slots + ' 个', color: 'bg-rose-50 text-rose-600', href: '/errorbook' }
+    ];
+    document.getElementById('stat-cards').innerHTML = cards.map((c) => `
+      <a href="${c.href}" class="block bg-white rounded-2xl shadow-sm border border-slate-200 p-5 hover:shadow-md hover:border-indigo-200 transition">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl ${c.color} flex items-center justify-center"><span class="w-2.5 h-2.5 rounded-full bg-current"></span></div>
+          <div>
+            <div class="text-2xl font-bold text-slate-800 leading-none">${c.value}</div>
+            <div class="text-xs text-slate-500 mt-1">${c.label}</div>
+          </div>
+        </div>
+        <div class="text-xs text-slate-400 mt-3 flex items-center justify-between">${c.sub}<span class="text-indigo-400 font-semibold">→</span></div>
+      </a>`).join('');
+  }
+
+  function renderToday(due, stats) {
+    const tl = document.getElementById('today-list');
+    if (due.tasks.length) {
+      tl.innerHTML = due.tasks.map((t) => `
+        <div class="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-3">
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-slate-800 text-sm truncate">${esc(t.name)}</div>
+            <div class="text-xs text-slate-500 mt-0.5">${t.urgency_hours > 0 ? '<span class="text-rose-500">已超期 ' + t.urgency_hours + ' 小时</span>' : '按时到达'} · 预计 ' + t.duration_minutes + ' 分钟 · 第 ' + (t.review_count + 1) + ' 次复习</div>
+          </div>
+          <a href="/review" class="shrink-0 text-xs font-medium bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700">开始</a>
+        </div>`).join('');
+      if (due.overloaded.length) tl.insertAdjacentHTML('beforeend', `<div class="text-xs text-amber-600 bg-amber-50 rounded-xl px-4 py-3">另有 ${due.overloaded.length} 个知识点超出今日空闲容量，已自动顺延。</div>`);
+    } else if (due.overloaded.length) {
+      tl.innerHTML = `<div class="text-xs text-amber-600 bg-amber-50 rounded-xl px-4 py-3">今日无到期任务，但有 ${due.overloaded.length} 个知识点因容量顺延。</div>`;
+    } else {
+      const nextDay = stats.upcoming.find((u) => u.count > 0);
+      const msg = nextDay
+        ? '今天没有到期任务，下一次复习安排在 ' + fmtDate(nextDay.date) + '，共 ' + nextDay.count + ' 个知识点'
+        : '今天没有到期任务，休息一下或录入新笔记吧';
+      tl.innerHTML = empty(msg);
+    }
+  }
+
+  function renderWeek(due, stats) {
+    const el = document.getElementById('week-strip');
+    const week = ['日', '一', '二', '三', '四', '五', '六'];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const counts = [due.tasks.length];
+    for (let i = 0; i < 6; i++) counts.push(stats.upcoming[i] ? stats.upcoming[i].count : 0);
+    const maxCount = Math.max.apply(null, counts.concat(1));
+    el.innerHTML = counts.map((count, i) => {
+      const d = new Date(today.getTime() + i * 86400000);
+      const isToday = i === 0;
+      const ratio = count / maxCount;
+      const bg = count === 0 ? 'bg-slate-100 text-slate-400'
+        : ratio <= 0.34 ? 'bg-indigo-100 text-indigo-700'
+        : ratio <= 0.67 ? 'bg-indigo-300 text-white'
+        : 'bg-indigo-600 text-white';
+      const inner = `
+        <div class="flex flex-col items-center rounded-xl py-3 px-1 transition ${bg} ${isToday ? 'ring-2 ring-indigo-500 ring-offset-1' : ''}">
+          <div class="text-xs font-medium">${isToday ? '今天' : '周' + week[d.getDay()]}</div>
+          <div class="text-2xl font-bold leading-none my-1">${count}</div>
+          <div class="text-xs opacity-80">${(d.getMonth() + 1) + '/' + d.getDate()}</div>
+        </div>`;
+      return count > 0
+        ? `<a href="/review" title="点击开始复习" class="block hover:opacity-80">${inner}</a>`
+        : `<div title="当天暂无任务">${inner}</div>`;
+    }).join('');
+  }
+
+  function slotRowHtml(s) {
+    s = s || {};
+    return `
+      <div class="slot-row flex flex-wrap items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
+        <span class="slot-id hidden">${s.id || ''}</span>
+        <input type="time" class="slot-start w-24 border border-slate-300 rounded-lg px-2 py-1.5 text-sm" value="${esc(s.start_time || '')}">
+        <span class="text-xs text-slate-400">至</span>
+        <input type="time" class="slot-end w-24 border border-slate-300 rounded-lg px-2 py-1.5 text-sm" value="${esc(s.end_time || '')}">
+        <select class="slot-cycle border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white">
+          <option value="0" ${s.cycle_type === 1 ? '' : 'selected'}>每日</option>
+          <option value="1" ${s.cycle_type === 1 ? 'selected' : ''}>每 2 天</option>
+          <option value="2" ${s.cycle_type === 2 ? 'selected' : ''}>每 3 天</option>
+        </select>
+        <label class="flex items-center gap-1 text-xs text-slate-500 select-none"><input type="checkbox" class="slot-enabled accent-indigo-600" ${s.enabled === 0 ? '' : 'checked'}>启用</label>
+        <button class="slot-del text-xs bg-rose-50 text-rose-600 px-2 py-1.5 rounded-lg hover:bg-rose-100">✕</button>
+      </div>`;
+  }
+
+  function addHomeSlotRow(slot) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = slotRowHtml(slot).trim();
+    const el = wrap.firstChild;
+    el.querySelector('.slot-del').addEventListener('click', () => {
+      const id = parseInt(el.querySelector('.slot-id').textContent.trim() || '0');
+      if (id) homeDeletedIds.push(id);
+      el.remove();
+      const tip = document.getElementById('home-slot-tip');
+      tip.textContent = homeDeletedIds.length ? '有 ' + homeDeletedIds.length + ' 个待删除，点“保存时段”生效' : '';
+    });
+    document.getElementById('home-slots').appendChild(el);
+  }
+
+  async function loadHomeSlots() {
+    try {
+      const rows = await api('/freetime');
+      const box = document.getElementById('home-slots');
+      box.innerHTML = '';
+      if (rows.length) {
+        rows.forEach((r) => addHomeSlotRow(r));
+        for (let i = rows.length; i < 3; i++) addHomeSlotRow({ start_time: '', end_time: '', cycle_type: 0, enabled: 1 });
+      } else {
+        [
+          { start_time: '19:00', end_time: '21:00', cycle_type: 0, enabled: 1 },
+          { start_time: '12:00', end_time: '13:00', cycle_type: 0, enabled: 1 },
+          { start_time: '08:00', end_time: '09:00', cycle_type: 1, enabled: 1 }
+        ].forEach((r) => addHomeSlotRow(r));
+      }
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function saveHomeSlots() {
+    const rows = Array.from(document.querySelectorAll('#home-slots .slot-row')).map((row) => ({
+      id: parseInt(row.querySelector('.slot-id').textContent.trim() || '0'),
+      start_time: row.querySelector('.slot-start').value,
+      end_time: row.querySelector('.slot-end').value,
+      cycle_type: parseInt(row.querySelector('.slot-cycle').value),
+      enabled: row.querySelector('.slot-enabled').checked ? 1 : 0
+    }));
+    const valid = [];
+    for (const r of rows) {
+      if (!r.start_time || !r.end_time) continue;
+      if (r.start_time >= r.end_time) { toast('结束时间必须晚于开始时间：' + r.start_time + ' - ' + r.end_time, 'err'); return; }
+      valid.push(r);
+    }
+    if (!valid.length) { toast('请至少填写一个完整时段', 'err'); return; }
+    try {
+      for (const r of valid) {
+        const body = { start_time: r.start_time, end_time: r.end_time, cycle_type: r.cycle_type, enabled: r.enabled };
+        if (r.id) await api('/freetime/' + r.id, { method: 'PUT', body: JSON.stringify(body) });
+        else await api('/freetime', { method: 'POST', body: JSON.stringify(body) });
+      }
+      for (const id of homeDeletedIds) { try { await api('/freetime/' + id, { method: 'DELETE' }); } catch (e) {} }
+      homeDeletedIds = [];
+      toast('时段已保存（' + valid.length + ' 个）', 'ok');
+      loadHomeSlots();
+      refreshDashboard();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function refreshDashboard() {
+    let stats, due;
+    try {
+      [stats, due] = await Promise.all([api('/stats'), api('/review/due')]);
+    } catch (e) {
+      document.getElementById('stat-cards').innerHTML = empty('加载失败：' + e.message);
+      return;
+    }
+    renderCards(stats);
+    renderToday(due, stats);
+    renderWeek(due, stats);
+  }
+
+  document.getElementById('home-add-slot').addEventListener('click', () => addHomeSlotRow({ start_time: '', end_time: '', cycle_type: 0, enabled: 1 }));
+  document.getElementById('home-save-slots').addEventListener('click', saveHomeSlots);
+
+  refreshDashboard();
+  loadHomeSlots();
+  </script>
+
+  <script>
+  // 首页时钟
+  (function () {
+    const timeEl = document.getElementById('clock-time');
+    const dateEl = document.getElementById('clock-date');
+    const greetEl = document.getElementById('clock-greet');
+    const week = ['日', '一', '二', '三', '四', '五', '六'];
+    const pad = (n) => (n < 10 ? '0' : '') + n;
+    function tick() {
+      const d = new Date();
+      timeEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+      dateEl.textContent = d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 星期' + week[d.getDay()];
+      const h = d.getHours();
+      greetEl.textContent = h < 6 ? '夜深了，注意休息' : h < 12 ? '早上好' : h < 14 ? '中午好' : h < 18 ? '下午好' : '晚上好';
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
+
+  // 励志语句
+  (function () {
+    const quotes = [
+      { text: '不积跬步，无以至千里；不积小流，无以成江海。', source: '荀子《劝学》' },
+      { text: '学而时习之，不亦说乎？', source: '孔子《论语》' },
+      { text: '温故而知新，可以为师矣。', source: '孔子《论语》' },
+      { text: '读书百遍，其义自见。', source: '陈寿《三国志》' },
+      { text: '锲而不舍，金石可镂。', source: '荀子《劝学》' },
+      { text: '少年易老学难成，一寸光阴不可轻。', source: '朱熹《偶成》' },
+      { text: '路漫漫其修远兮，吾将上下而求索。', source: '屈原《离骚》' },
+      { text: '业精于勤，荒于嬉；行成于思，毁于随。', source: '韩愈《进学解》' },
+      { text: '千里之行，始于足下。', source: '老子《道德经》' },
+      { text: '天行健，君子以自强不息。', source: '《周易》' },
+      { text: '书山有路勤为径，学海无涯苦作舟。', source: '韩愈' },
+      { text: '纸上得来终觉浅，绝知此事要躬行。', source: '陆游《冬夜读书示子聿》' },
+      { text: '其实地上本没有路，走的人多了，也便成了路。', source: '鲁迅《故乡》' },
+      { text: '时间就像海绵里的水，只要愿挤，总还是有的。', source: '鲁迅' },
+      { text: '横眉冷对千夫指，俯首甘为孺子牛。', source: '鲁迅《自嘲》' },
+      { text: '生活不能等待别人来安排，要自己去争取和奋斗。', source: '路遥《平凡的世界》' },
+      { text: '人生忽如寄，莫辜负茶、汤和好天气。', source: '汪曾祺' },
+      { text: '悄悄是别离的笙箫，夏虫也为我沉默。', source: '徐志摩《再别康桥》' },
+      { text: '婚姻是一座围城，城外的人想进去，城里的人想出来。', source: '钱钟书《围城》' },
+      { text: '黑夜给了我黑色的眼睛，我却用它寻找光明。', source: '顾城《一代人》' },
+      { text: '既然选择了远方，便只顾风雨兼程。', source: '汪国真' },
+      { text: '我只愿面朝大海，春暖花开。', source: '海子《面朝大海，春暖花开》' },
+      { text: '一个人可以被毁灭，但不能被打败。', source: '海明威《老人与海》' },
+      { text: '假如生活欺骗了你，不要悲伤，不要心急！', source: '普希金《假如生活欺骗了你》' },
+      { text: '冬天来了，春天还会远吗？', source: '雪莱《西风颂》' },
+      { text: '生如夏花之绚烂，死如秋叶之静美。', source: '泰戈尔《飞鸟集》' },
+      { text: '如果你因失去了太阳而流泪，那么你也将错过群星。', source: '泰戈尔《飞鸟集》' },
+      { text: '所有的大人都曾经是小孩，虽然，只有少数的人记得。', source: '圣埃克苏佩里《小王子》' },
+      { text: '生命诚可贵，爱情价更高；若为自由故，两者皆可抛。', source: '裴多菲《自由与爱情》' },
+      { text: '我们都在阴沟里，但仍有人仰望星空。', source: '王尔德' },
+      { text: '每一个不曾起舞的日子，都是对生命的辜负。', source: '尼采' },
+      { text: '生命中所有的灿烂，终要寂寞偿还。', source: '马尔克斯《百年孤独》' },
+      { text: '「心を燃やせ」→ 燃烧你的心吧，绝不认输！', source: '《鬼灭之刃》·炼狱杏寿郎' },
+      { text: '「俺は俺の責務を全うする」→ 我会贯彻我的责任，不让任何人死在我面前。', source: '《鬼灭之刃》·炼狱杏寿郎' },
+      { text: '「痛みを感じるから、人を思いやる」→ 因为感受过痛苦，所以更能体谅他人。', source: '《火影忍者》·佩恩' },
+      { text: '「絶対に諦めない」→ 我绝不放弃！这是我的忍道。', source: '《火影忍者》·漩涡鸣人' },
+      { text: '「俺は海賊王になる男だ」→ 我是要成为海贼王的男人！', source: '《海贼王》·蒙奇·D·路飞' },
+      { text: '「人はいつか死ぬ、夢は死なない」→ 人终有一死，但梦想不会死去。', source: '《海贼王》·白胡子' },
+      { text: '「俺は、お前の剣になる」→ 我，将成为你的剑。', source: '《Fate/stay night》·卫宫士郎' },
+      { text: '「僕は、正義の味方になる」→ 我要成为正义的伙伴。', source: '《Fate/stay night》·卫宫士郎' },
+      { text: '只要我们在一起，就不会迷路。', source: '《Clannad》·古河渚' },
+      { text: '这个小镇，珍藏着我所有的回忆。', source: '《Clannad》·冈崎朋也' },
+      { text: '「逃げちゃダメだ」→ 不能逃避，不能逃避，不能逃避。', source: '《EVA》·碇真嗣' },
+      { text: '「今日も、いい天気」→ 今天，也是好天气。', source: '《EVA》·绫波丽' },
+      { text: '「愛って、何ですか」→ 我想知道，爱究竟是什么。', source: '《紫罗兰永恒花园》·薇尔莉特' },
+      { text: '所谓爱，就是想要传达给某人的心意。', source: '《紫罗兰永恒花园》' },
+      { text: '明明那样漫长，却又转瞬即逝——这就是人类的时光。', source: '《葬送的芙莉莲》·芙莉莲' },
+      { text: '真正的成长，是学会与告别和解。', source: '《葬送的芙莉莲》' },
+      { text: '即使没有才能，也要努力闪闪发光。', source: '《孤独摇滚》·后藤一里' },
+      { text: '音乐，就是为了传达这份心情而存在的。', source: '《孤独摇滚》' },
+      { text: '为了这片大地上的每一个人。', source: '《明日方舟》·阿米娅' },
+      { text: '博士，请下达指令。', source: '《明日方舟》·阿米娅' },
+      { text: '旅程总有一天会迎来终点，但旅途本身永不会结束。', source: '《原神》·温迪' },
+      { text: '旅行者，一起去冒险吧！', source: '《原神》·派蒙' },
+      { text: '因为和大家在一起，才觉得音乐这么美好。', source: '《轻音少女》·平泽唯' },
+      { text: '放学后的时光，就是我们的乐队！', source: '《轻音少女》' },
+      { text: '给岁月以文明，而不是给文明以岁月。', source: '《三体》·罗辑' },
+      { text: '弱小和无知不是生存的障碍，傲慢才是。', source: '《三体》' },
+      { text: '心怀不惧，方能翱翔于天际。', source: '《王者荣耀》' },
+      { text: '稳住，我们能赢！', source: '《王者荣耀》' },
+      { text: '「迷子でも、迷子でいい」→ 就算迷路也没关系，因为我们一起前进。', source: '《MyGO!!!!!》·高松灯' },
+      { text: '不想忘记，和大家在一起的这份心情。', source: '《MyGO!!!!!》·高松灯' },
+      { text: '「ゼロから始める」→ 从零开始，重新来过。', source: '《Re:从零开始的异世界生活》·菜月昴' },
+      { text: '你已经很努力了，在这里先休息一下吧。', source: '《Re:0》·蕾姆' }
+    ];
+    const textEl = document.getElementById('quote-text');
+    const srcEl = document.getElementById('quote-source');
+    const nextBtn = document.getElementById('quote-next');
+    let idx = Math.floor(Math.random() * quotes.length);
+    function show() {
+      textEl.textContent = quotes[idx].text;
+      srcEl.textContent = '—— ' + quotes[idx].source;
+    }
+    // 随机切一句（尽量不与上一条重复）
+    function pickRandom() {
+      if (quotes.length <= 1) return;
+      let n;
+      do { n = Math.floor(Math.random() * quotes.length); } while (n === idx);
+      idx = n;
+    }
+    nextBtn.addEventListener('click', () => { pickRandom(); show(); });
+    show();
+    setInterval(() => { pickRandom(); show(); }, 30000);
+  })();
+
+    // 首页音乐播放器（添加后自动保存在本地，刷新/重启浏览器都还在）
+  (function () {
+    const audio = document.getElementById('player-audio');
+    const fileInput = document.getElementById('player-file');
+    const addBtn = document.getElementById('player-add');
+    const playBtn = document.getElementById('player-play');
+    const prevBtn = document.getElementById('player-prev');
+    const nextBtn = document.getElementById('player-next');
+    const progress = document.getElementById('player-progress');
+    const curTime = document.getElementById('player-cur');
+    const durTime = document.getElementById('player-dur');
+    const volume = document.getElementById('player-volume');
+    const listEl = document.getElementById('player-list');
+    const emptyEl = document.getElementById('player-empty');
+    const modeBtn = document.getElementById('player-mode');
+    let playlist = [];
+    let cur = -1;
+    let sorting = false;   // 排序模式开关
+    let order = [];        // 已保存的播放顺序（歌曲 id 数组）
+    try { order = JSON.parse(localStorage.getItem('niannian-music-order') || '[]'); } catch (e) { order = []; }
+    let playMode = 0;      // 0 顺序播放 / 1 随机播放 / 2 单曲循环
+    const MODE_LABEL = ['顺序播放', '随机播放', '单曲循环'];
+    try { const m = parseInt(localStorage.getItem('niannian-playmode') || '0'); playMode = (m >= 0 && m <= 2) ? m : 0; } catch (e) { playMode = 0; }
+    function setPlayMode(m) {
+      playMode = (m + 3) % 3;
+      try { localStorage.setItem('niannian-playmode', String(playMode)); } catch (e) {}
+      if (modeBtn) modeBtn.textContent = MODE_LABEL[playMode];
+    }
+    const ICON_PLAY = '<svg viewBox="0 0 24 24" class="w-5 h-5 mx-auto" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+    const ICON_PAUSE = '<svg viewBox="0 0 24 24" class="w-5 h-5 mx-auto" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>';
+
+    // ---- IndexedDB：把添加的音乐文件持久化保存到本地 ----
+    const DB_NAME = 'review-planner-music';
+    const STORE = 'tracks';
+    let dbPromise = null;
+    function openDB() {
+      if (dbPromise) return dbPromise;
+      dbPromise = new Promise(function (resolve, reject) {
+        let req;
+        try { req = indexedDB.open(DB_NAME, 1); }
+        catch (e) { reject(e); return; }
+        req.onupgradeneeded = function () {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(STORE)) {
+            db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+          }
+        };
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { reject(req.error); };
+      });
+      return dbPromise;
+    }
+    function txStore(db, mode) {
+      return db.transaction(STORE, mode).objectStore(STORE);
+    }
+    function dbGetAll() {
+      return openDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          const r = txStore(db, 'readonly').getAll();
+          r.onsuccess = function () { resolve(r.result || []); };
+          r.onerror = function () { reject(r.error); };
+        });
+      });
+    }
+    function dbAdd(record) {
+      return openDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          const r = txStore(db, 'readwrite').add(record);
+          r.onsuccess = function () { resolve(r.result); };
+          r.onerror = function () { reject(r.error); };
+        });
+      });
+    }
+    function dbDelete(id) {
+      return openDB().then(function (db) {
+        return new Promise(function (resolve, reject) {
+          const r = txStore(db, 'readwrite').delete(id);
+          r.onsuccess = function () { resolve(); };
+          r.onerror = function () { reject(r.error); };
+        });
+      });
+    }
+
+    const fmt = (sec) => {
+      if (!isFinite(sec) || sec < 0) return '00:00';
+      sec = Math.floor(sec);
+      const m = Math.floor(sec / 60), s = sec % 60;
+      return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    };
+
+    function saveOrder() {
+      try { localStorage.setItem('niannian-music-order', JSON.stringify(playlist.map((t) => t.id))); } catch (e) {}
+    }
+
+    function renderSortBar() {
+      let bar = document.getElementById('sort-bar');
+      if (!sorting) { if (bar) bar.remove(); return; }
+      if (!bar) {
+        const wrap = listEl.parentNode;
+        bar = document.createElement('div');
+        bar.id = 'sort-bar';
+        bar.className = 'flex items-center justify-between gap-2 mb-2 px-3 py-2 bg-indigo-50 rounded-lg text-xs text-indigo-700';
+        bar.innerHTML = '<span>拖动 ⠿ 调整顺序</span><button id="sort-done" class="text-xs font-medium bg-indigo-600 text-white px-3 py-1.5 rounded-lg">完成</button>';
+        wrap.insertBefore(bar, listEl);
+        bar.querySelector('#sort-done').addEventListener('click', () => { sorting = false; render(); });
+      }
+    }
+
+    function confirmDelete(i) {
+      const item = playlist[i];
+      if (!confirm('确定要删除《' + (item && item.name ? item.name : '这首音乐') + '》吗？此操作不可撤销。')) return;
+      playlist.splice(i, 1);
+      if (item && item.url) URL.revokeObjectURL(item.url);
+      if (item && item.id != null) dbDelete(item.id).catch(function () {});
+      if (cur > i) cur--;
+      else if (cur === i) { cur = -1; audio.pause(); audio.removeAttribute('src'); }
+      saveOrder();
+      render();
+    }
+
+    function showMenu(anchor, i) {
+      const rect = anchor.getBoundingClientRect();
+      const menu = document.createElement('div');
+      menu.className = 'fixed z-50 bg-white border border-slate-200 rounded-xl shadow-xl py-1 min-w-[130px]';
+      menu.style.top = (rect.bottom + 4) + 'px';
+      menu.style.left = rect.right + 'px';
+      menu.style.transform = 'translateX(-100%)';
+      const items = [
+        { label: '拖动排序', run: () => { sorting = true; render(); } },
+        { label: '删除', run: () => { confirmDelete(i); } }
+      ];
+      items.forEach((it) => {
+        const b = document.createElement('button');
+        b.className = 'block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 whitespace-nowrap';
+        b.textContent = it.label;
+        b.addEventListener('click', function (e) { e.stopPropagation(); menu.remove(); it.run(); });
+        menu.appendChild(b);
+      });
+      document.body.appendChild(menu);
+      function close(e) { if (menu.contains(e.target)) return; menu.remove(); document.removeEventListener('click', close, true); }
+      document.addEventListener('click', close, true);
+    }
+
+    function render() {
+      listEl.innerHTML = '';
+      playlist.forEach((t, i) => {
+        const div = document.createElement('div');
+        div.className = 'flex items-center gap-2 px-3 py-2 rounded-lg text-sm '
+          + (i === cur ? 'bg-indigo-50 text-indigo-700' : (sorting ? 'hover:bg-indigo-50/60 text-slate-600' : 'hover:bg-slate-50 text-slate-700 cursor-pointer'));
+        if (sorting) { div.draggable = true; div.classList.add('border', 'border-dashed', 'border-indigo-300', 'cursor-grab'); }
+        const dragHtml = sorting ? '<span class="text-slate-400 text-base leading-none mr-1 select-none">⠿</span>' : '';
+        div.innerHTML = dragHtml
+          + '<span class="flex-1 min-w-0 truncate">' + esc(t.name) + '</span>'
+          + (i === cur ? '<span class="text-xs text-indigo-400 shrink-0">播放中</span>' : '')
+          + '<span class="track-more text-slate-400 hover:text-slate-600 text-lg leading-none px-1 shrink-0 cursor-pointer select-none" title="更多操作">⋯</span>';
+        const more = div.lastElementChild;
+        more.addEventListener('click', (e) => { e.stopPropagation(); showMenu(more, i); });
+        div.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; });
+        div.addEventListener('dragover', (e) => { e.preventDefault(); });
+        div.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const from = Number(e.dataTransfer.getData('text/plain'));
+          if (isNaN(from) || from === i) return;
+          const moved = playlist.splice(from, 1)[0];
+          playlist.splice(i, 0, moved);
+          saveOrder();
+          render();
+        });
+        if (!sorting) div.addEventListener('click', () => play(i));
+        listEl.appendChild(div);
+      });
+      emptyEl.style.display = playlist.length ? 'none' : 'block';
+      playBtn.innerHTML = audio.paused ? ICON_PLAY : ICON_PAUSE;
+      renderSortBar();
+    }
+
+    function saveState() {
+      if (cur >= 0 && playlist[cur]) {
+        try { sessionStorage.setItem('niannian-music', JSON.stringify({ id: playlist[cur].id, time: audio.currentTime || 0, playing: !audio.paused })); } catch (e) {}
+      }
+    }
+
+    function play(i) {
+      if (i < 0 || i >= playlist.length) return;
+      cur = i;
+      audio.src = playlist[i].url;
+      audio.play().catch(function () {});
+      render();
+      saveState();
+    }
+
+    addBtn.addEventListener('click', () => fileInput.click());
+
+    // 页面打开时，从本地数据库恢复已保存的音乐（按上次保存的顺序）
+    dbGetAll().then((records) => {
+      const map = {};
+      (records || []).forEach((r) => {
+        if (!r || !r.blob) return;
+        map[r.id] = { id: r.id, name: r.name, url: URL.createObjectURL(r.blob) };
+      });
+      const items = [];
+      (order || []).forEach((id) => { if (map[id] != null) { items.push(map[id]); delete map[id]; } });
+      Object.keys(map).forEach((id) => { items.push(map[id]); });
+      playlist = items;
+      render();
+      // 跨页续播：若上一页正在播放，恢复到同一首并接上进度（若之前暂停则保持暂停）
+      let st = null;
+      try { st = JSON.parse(sessionStorage.getItem('niannian-music') || 'null'); } catch (e) {}
+      if (st && st.id != null) {
+        const i = playlist.findIndex((t) => String(t.id) === String(st.id));
+        if (i >= 0) {
+          cur = i; audio.src = playlist[i].url;
+          if (st.time) { try { audio.currentTime = st.time; } catch (e) {} }
+          if (st.playing) audio.play().catch(function () {});
+          render();
+        }
+      }
+    }).catch(function () { render(); });
+
+    fileInput.addEventListener('change', () => {
+      const files = Array.prototype.slice.call(fileInput.files);
+      fileInput.value = '';
+      Promise.all(files.map(async (f) => {
+        const name = f.name.replace(/\.[^.]+$/, '');
+        try {
+          const id = await dbAdd({ name: name, blob: f, addedAt: Date.now() });
+          playlist.push({ id: id, name: name, url: URL.createObjectURL(f) });
+        } catch (e) {
+          playlist.push({ name: name, url: URL.createObjectURL(f) });
+        }
+      })).then(() => {
+        if (cur < 0 && playlist.length) play(0); else render();
+        saveOrder();
+      });
+    });
+
+    playBtn.addEventListener('click', () => {
+      if (!playlist.length) { addBtn.click(); return; }
+      if (cur < 0) { play(0); return; }
+      if (audio.paused) audio.play().catch(function () {}); else audio.pause();
+    });
+
+    function nextIndex() {
+      if (playlist.length <= 1) return cur;
+      if (playMode === 1) { // 随机播放
+        let n;
+        do { n = Math.floor(Math.random() * playlist.length); } while (n === cur);
+        return n;
+      }
+      return (cur + 1) % playlist.length; // 顺序播放
+    }
+    prevBtn.addEventListener('click', () => { if (playlist.length) play((cur - 1 + playlist.length) % playlist.length); });
+    nextBtn.addEventListener('click', () => { if (playlist.length) play(nextIndex()); });
+
+    audio.addEventListener('timeupdate', () => {
+      progress.value = audio.duration ? (audio.currentTime / audio.duration) * 100 : 0;
+      curTime.textContent = fmt(audio.currentTime);
+      durTime.textContent = fmt(audio.duration);
+      saveState();
+    });
+    progress.addEventListener('input', () => { if (audio.duration) audio.currentTime = (progress.value / 100) * audio.duration; });
+    volume.addEventListener('input', () => { audio.volume = parseFloat(volume.value); });
+    audio.addEventListener('ended', () => {
+      if (!playlist.length) return;
+      if (playMode === 2) { audio.currentTime = 0; audio.play().catch(function () {}); saveState(); return; } // 单曲循环：重播当前
+      play(nextIndex());
+    });
+    audio.addEventListener('play', () => { playBtn.innerHTML = ICON_PAUSE; });
+    audio.addEventListener('pause', () => { playBtn.innerHTML = ICON_PLAY; });
+    // 播放模式按钮：点击循环切换 顺序→随机→单曲
+    if (modeBtn) {
+      modeBtn.textContent = MODE_LABEL[playMode];
+      modeBtn.addEventListener('click', () => setPlayMode(playMode + 1));
+    }
+    window.addEventListener('pagehide', saveState);
+    render();
+  })();
+  </script>
+</body>
+</html>

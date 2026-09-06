@@ -1,0 +1,16 @@
+{
+  "name": "niannian",
+  "version": "0.1.0",
+  "private": true,
+  "description": "念念 · AI 分层复习规划器",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --watch --disable-warning=ExperimentalWarning server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^2.0.1",
+    "pdf-parse": "^1.1.1"
+  }
+}

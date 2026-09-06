@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>错题本 · 念念</title>
+  <script src="/vendor/tailwind.js"></script>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#8ec5f0">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="bg-slate-100">
+  <script>window.PAGE = 'errorbook';</script>
+  <div id="nav-root"></div>
+  <div id="page-content">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-800">错题本</h1>
+        <p class="text-sm text-slate-500 mt-1">收纳作答失误的习题，可随时回顾与移除</p>
+      </div>
+      <div class="flex gap-2">
+        <a href="/api/export/questions" class="text-sm font-medium bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50">导出题目</a>
+      </div>
+    </div>
+    <div id="error-list" class="space-y-3"></div>
+  </div>
+  <script src="/js/app.js"></script>
+  <script>
+  const TYPE_LABEL = { 0: '选择题', 1: '填空题', 2: '简答题' };
+
+  async function load() {
+    try {
+      const rows = await api('/errorbook');
+      const box = document.getElementById('error-list');
+      if (!rows.length) { box.innerHTML = empty('暂无错题'); return; }
+      box.innerHTML = rows.map((r) => `
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 text-xs text-slate-400 mb-2">
+                <span class="bg-rose-50 text-rose-600 px-1.5 py-0.5 rounded">${TYPE_LABEL[r.question_type] || '简答'}</span>
+                <span>${esc(r.kp_name)}</span>
+                <span>· ${fmtTime(r.create_time)}</span>
+              </div>
+              <div class="text-sm font-medium text-slate-800">${esc(r.question_text)}</div>
+              ${r.choices && r.question_type === 0 ? '<div class="text-xs text-slate-500 mt-2">' + r.choices.map((c, i) => '<div>' + String.fromCharCode(65 + i) + '. ' + esc(c) + '</div>').join('') + '</div>' : ''}
+              <div class="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mt-3">正确答案：${esc(r.answer)}</div>
+            </div>
+            <button onclick="remove(${r.eb_id})" class="shrink-0 text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200">已掌握·移除</button>
+          </div>
+        </div>`).join('');
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function remove(id) {
+    try {
+      await api('/errorbook/' + id, { method: 'DELETE' });
+      toast('已移除', 'ok');
+      load();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  load();
+  </script>
+</body>
+</html>
