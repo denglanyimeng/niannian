@@ -4,6 +4,14 @@
 
 ![念念学习仪表盘](assets/dashboard.png)
 
+## 🚀 下载即用（Windows · 免安装）
+
+**不想装 Node、不想配置？** 直接下载就能跑：
+
+- **最新发布版**：[github.com/denglanyimeng/niannian/releases](https://github.com/denglanyimeng/niannian/releases/latest)
+- 下载 `niannian-portable.zip` → 解压 → **双击 `启动念念.bat`** → 浏览器自动打开 `http://localhost:3000`（免安装、不用装 Node）
+- 数据和音乐都存在你自己电脑上，单机运行
+
 ## 功能一览
 
 - **笔记录入（复习块模式）**：上传图片 / PDF / 粘贴文本 → AI 总结全文供确认识别是否正确 → AI 结合整篇内容提炼复习要点（可自由编辑，支持代码示例）→ 整篇笔记保存为一个「复习块」，统一安排复习
