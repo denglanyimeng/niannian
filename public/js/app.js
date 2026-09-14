@@ -83,7 +83,7 @@ function injectNav() {
       </div>
       <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">${items}</nav>
       <div class="px-5 py-4 border-t border-slate-800 text-[11px] text-slate-500">
-        ${active ? active.label : ''}<br>v0.1 本地运行
+        ${active ? active.label : ''}<br>v0.1.1 本地运行
       </div>
     </aside>
     <header class="mobile-topbar md:hidden fixed top-0 inset-x-0 z-40 bg-slate-900/95 backdrop-blur flex items-center justify-between px-4 border-b border-slate-800">

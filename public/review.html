@@ -56,6 +56,7 @@
           <div class="text-xs text-slate-500" id="quiz-progress"></div>
           <button onclick="abortQuiz()" class="text-xs text-slate-400 hover:text-slate-600">退出复习</button>
         </div>
+        <div id="quiz-warning" class="hidden mb-4 text-xs leading-relaxed text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3"></div>
         <div id="quiz-body"></div>
       </div>
     </div>
@@ -164,12 +165,23 @@
       for (const s of r.sessions) {
         for (const q of s.questions) questions.push(Object.assign({}, q, { kp_id: s.kp_id, kp_name: s.kp_name, review_count: s.review_count }));
       }
-      quiz = { questions, answers: {}, done: {}, idx: 0 };
+      quiz = { questions, answers: {}, picks: {}, done: {}, idx: 0 };
       // 题型兜底：有≥2个选项就当选择题作答；选择题缺选项则按填空题作答
       for (const q of quiz.questions) {
         const has = Array.isArray(q.choices) && q.choices.length >= 2;
         if (has && q.question_type !== 0) q.question_type = 0;
         else if (!has && q.question_type === 0) { q.question_type = 1; q.choices = null; }
+      }
+      // AI 失败或被丢弃的题目要明确告诉用户，不再静默降级
+      const wbox = document.getElementById('quiz-warning');
+      const warns = Array.isArray(r.warnings) ? r.warnings : [];
+      if (warns.length) {
+        wbox.innerHTML = '<div class="font-semibold mb-1">⚠ 出题提示</div><ul class="list-disc pl-4 space-y-0.5">' +
+          warns.map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul>';
+        wbox.classList.remove('hidden');
+      } else {
+        wbox.classList.add('hidden');
+        wbox.innerHTML = '';
       }
       renderQuestion();
     } catch (e) {
@@ -190,9 +202,86 @@
     beginQuiz([kpId]);
   }
 
-  // 本地归一化（与后端批改一致：忽略大小写与常见标点/空白）
+  // 本地归一化：只抹平大小写、空白、全角半角、首尾标点。
+  // 必须保留 . ( ) { } = " ; 这类有语义的符号 ——
+  // 旧版本把这些符号一起删掉，导致 {{ .FieldName }} / {{ FieldName }} / {{ .fieldname() }}
+  // 归一化后完全相同，于是多个选项被同时判为正确（B 和 D 一起打勾）。
   function normText(s) {
-    return String(s == null ? '' : s).toLowerCase().replace(/[\s，。、,.！!？?：:；;""''（）()【】\[\]]/g, '');
+    return String(s == null ? '' : s)
+      .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+      .replace(/\u3000/g, ' ')
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/^[。，,；;：:、"'“”‘’!！?？]+/, '')
+      .replace(/[。，,；;：:、"'“”‘’!！?？]+$/, '');
+  }
+
+  // 把答案定位到"唯一"的选项下标：先精确匹配，再归一化匹配；定位不到返回 -1。
+  // 判题时只认这一个下标，从结构上杜绝"多个选项同时打勾"。
+  function findChoiceIndex(choices, answer) {
+    if (!Array.isArray(choices) || !choices.length) return -1;
+    const list = choices.map((c) => String(c == null ? '' : c));
+    const raw = String(answer == null ? '' : answer).trim();
+    if (!raw) return -1;
+    const exact = list.findIndex((c) => c.trim() === raw);
+    if (exact >= 0) return exact;
+    const key = normText(raw);
+    if (!key) return -1;
+    return list.findIndex((c) => normText(c) === key);
+  }
+
+  // 填空题判分用的「宽松键」：抹掉所有标点与空白，只留文字本身
+  function looseKey(s) {
+    return String(s == null ? '' : s)
+      .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+      .replace(/\u3000/g, ' ')
+      .toLowerCase()
+      .replace(/[\s，。、,.！!？?：:；;""''（）()【】\[\]]/g, '');
+  }
+
+  // 编辑距离（Levenshtein）
+  function editDistance(a, b) {
+    const s = String(a || '');
+    const t = String(b || '');
+    if (!s.length) return t.length;
+    if (!t.length) return s.length;
+    let prev = new Array(t.length + 1);
+    let cur = new Array(t.length + 1);
+    for (let j = 0; j <= t.length; j++) prev[j] = j;
+    for (let i = 1; i <= s.length; i++) {
+      cur[0] = i;
+      for (let j = 1; j <= t.length; j++) {
+        const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      }
+      const tmp = prev; prev = cur; cur = tmp;
+    }
+    return prev[t.length];
+  }
+
+  // 标准答案是否「吃符号」：含 {} () = < > 反引号 引号 时，符号本身就是答案的一部分，必须严格比对
+  function isSymbolSensitive(answer) {
+    return /[{}()=<>\`"']/.test(String(answer == null ? '' : answer));
+  }
+
+  // 填空题判分：符号类答案严格比对；纯文字答案容忍标点、连词、个别字的写法差异
+  function fillAnswerCorrect(userAnswer, answer) {
+    const ua = String(userAnswer == null ? '' : userAnswer).trim();
+    const qa = String(answer == null ? '' : answer).trim();
+    if (!ua || !qa) return false;
+    if (normText(ua) === normText(qa)) return true;
+    if (isSymbolSensitive(qa)) return false;
+    // 点号数量必须一致：宽松比对会抹掉 "."，否则 io.EOF 会被当成 ioEOF
+    const dotCount = (s) => (String(s).match(/\./g) || []).length;
+    if (dotCount(ua) !== dotCount(qa)) return false;
+    const U = looseKey(ua);
+    const A = looseKey(qa);
+    if (!U || !A) return false;
+    if (U === A) return true;
+    if (A.length >= 4 && U.includes(A)) return true;
+    if (U.length >= 4 && A.includes(U) && U.length / A.length >= 0.6) return true;
+    const dist = editDistance(U, A);
+    return 1 - dist / Math.max(U.length, A.length) >= 0.8;
   }
 
   function renderQuestion() {
@@ -239,6 +328,7 @@
     const text = (q.choices || [])[idx];
     if (text == null) return;
     quiz.answers[qid] = text;
+    quiz.picks[qid] = idx;   // 记下所选下标，判题按下标比对，不靠文本归一化
     quiz.done[qid] = true;
     applyFeedback(q);
   }
@@ -259,28 +349,32 @@
     if (!box) return;
     let statusHtml = '';
     if (q.question_type === 0) {
-      const correct = normText(ua) === normText(q.answer);
-      const correctIdx = (q.choices || []).findIndex((c) => normText(c) === normText(q.answer));
+      const choices = q.choices || [];
+      // 唯一正确下标：整道题只标一个正确项，从结构上杜绝"B 和 D 同时打勾"
+      const correctIdx = findChoiceIndex(choices, q.answer);
+      const chosenIdx = (typeof quiz.picks[q.id] === 'number') ? quiz.picks[q.id] : findChoiceIndex(choices, ua);
+      const correct = correctIdx >= 0 && chosenIdx >= 0 && chosenIdx === correctIdx;
       const correctLetter = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
       Array.from(document.querySelectorAll('#choice-box button')).forEach((b) => {
         b.disabled = true;
         b.classList.add('cursor-not-allowed');
-        const txt = b.dataset.txt;
-        if (normText(txt) === normText(q.answer)) {
+        const i = parseInt(b.dataset.idx, 10);
+        if (correctIdx >= 0 && i === correctIdx) {
           b.classList.add('border-emerald-500', 'bg-emerald-50');
           b.querySelector('span:last-child').insertAdjacentHTML('beforeend', ' <span class="text-emerald-600 font-bold">✓</span>');
         }
-        if (!correct && normText(txt) === normText(ua)) {
+        if (!correct && i === chosenIdx) {
           b.classList.add('border-rose-500', 'bg-rose-50');
           b.querySelector('span:last-child').insertAdjacentHTML('beforeend', ' <span class="text-rose-600 font-bold">✗</span>');
         }
       });
       statusHtml = correct
         ? '<div class="flex items-center gap-2 text-emerald-700 font-medium mt-4"><span class="w-5 h-5 rounded-full bg-emerald-500 text-white text-xs flex items-center justify-center shrink-0">✓</span>回答正确</div>'
-        : '<div class="flex items-center gap-2 text-rose-700 font-medium mt-4"><span class="w-5 h-5 rounded-full bg-rose-500 text-white text-xs flex items-center justify-center shrink-0">✗</span>回答错误，正确选项为：' + (correctLetter || '') + '</div>';
+        : '<div class="flex items-center gap-2 text-rose-700 font-medium mt-4"><span class="w-5 h-5 rounded-full bg-rose-500 text-white text-xs flex items-center justify-center shrink-0">✗</span>回答错误，正确选项为：' + (correctLetter || '（本题选项异常，无法判定）') + '</div>';
     } else if (q.question_type === 1) {
       const filled = (ua || '').trim();
-      const correct = normText(filled) === normText(q.answer);
+      // 填空：符号类答案严格，纯文字答案容忍标点/连词/个别字差异
+      const correct = fillAnswerCorrect(filled, q.answer);
       statusHtml = correct
         ? '<div class="flex items-center gap-2 text-emerald-700 font-medium mt-4"><span class="w-5 h-5 rounded-full bg-emerald-500 text-white text-xs flex items-center justify-center shrink-0">✓</span>回答正确</div>'
         : '<div class="flex items-center gap-2 text-rose-700 font-medium mt-4"><span class="w-5 h-5 rounded-full bg-rose-500 text-white text-xs flex items-center justify-center shrink-0">✗</span>回答有误，正确答案将在全部作答后展示</div>';
@@ -355,13 +449,18 @@
     // 逐题回顾（批改后才可查看答案）
     const details = (results.details || []).map((d) => {
       const ok = d.score >= 60;
-      const choicesHtml = d.question_type === 0 && Array.isArray(d.choices) ? '<div class="mt-2 space-y-1">' + d.choices.map((c, i) => {
-        const isCorrect = normText(c) === normText(d.answer);
-        const isChosen = normText(c) === normText(d.your_answer);
-        const cls = isCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : (isChosen ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-500');
-        const mark = isCorrect ? '<b class="ml-1 text-emerald-600">✓</b>' : (isChosen ? '<b class="ml-1 text-rose-600">✗</b>' : '');
-        return `<div class="border rounded-lg px-3 py-2 text-xs ${cls}">${String.fromCharCode(65 + i)}. ${esc(c)}${mark}</div>`;
-      }).join('') + '</div>' : '';
+      const choicesHtml = d.question_type === 0 && Array.isArray(d.choices) ? (() => {
+        // 只认定一个正确下标，避免多个选项同时被标 ✓
+        const ci = findChoiceIndex(d.choices, d.answer);
+        const ui = findChoiceIndex(d.choices, d.your_answer);
+        return '<div class="mt-2 space-y-1">' + d.choices.map((c, i) => {
+          const isCorrect = i === ci;
+          const isChosen = i === ui;
+          const cls = isCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : (isChosen ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-500');
+          const mark = isCorrect ? '<b class="ml-1 text-emerald-600">✓</b>' : (isChosen ? '<b class="ml-1 text-rose-600">✗</b>' : '');
+          return `<div class="border rounded-lg px-3 py-2 text-xs ${cls}">${String.fromCharCode(65 + i)}. ${esc(c)}${mark}</div>`;
+        }).join('') + '</div>';
+      })() : '';
       const yourAnswer = d.question_type === 0 ? '' : `<div class="text-xs text-slate-600 mt-2">你的作答：<span class="${ok ? 'text-emerald-700' : 'text-rose-700'}">${esc(d.your_answer) || '（未作答）'}</span></div>`;
       return `
       <div class="bg-white rounded-2xl shadow-sm border ${ok ? 'border-emerald-200' : 'border-rose-200'} p-5">

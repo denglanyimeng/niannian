@@ -33,7 +33,11 @@ router.post('/generate', async (req, res) => {
       .run(id, g.question_text, g.answer, g.question_type || qType, g.choices ? JSON.stringify(g.choices) : null, g.hint || '', ts);
     created.push(Number(info.lastInsertRowid));
   }
-  res.json({ ok: true, created });
+  // 降级/丢弃必须让用户看见（旧实现静默降级，用户只看到莫名其妙的烂题）
+  const warnings = [];
+  if (generated.degraded) warnings.push('AI 出题失败，已降级为本地出题：' + (generated.degradeReason || '原因未知'));
+  if (generated.invalidDropped) warnings.push('有 ' + generated.invalidDropped + ' 道 AI 题因答案与选项对不上被丢弃');
+  res.json({ ok: true, created, warnings, source: generated.degraded ? 'offline' : 'ai' });
 });
 
 router.delete('/:id', (req, res) => {
