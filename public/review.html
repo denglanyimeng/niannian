@@ -51,7 +51,7 @@
 
     <!-- 答题视图 -->
     <div id="quiz-view" class="hidden">
-      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 max-w-2xl mx-auto">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 max-w-3xl mx-auto">
         <div class="flex items-center justify-between mb-4">
           <div class="text-xs text-slate-500" id="quiz-progress"></div>
           <button onclick="abortQuiz()" class="text-xs text-slate-400 hover:text-slate-600">退出复习</button>
@@ -83,6 +83,8 @@
   let duePlan = { tasks: [] };
   let quiz = null;
   let results = null;
+  // 每次开始出题都会自增；用户中途退出后，旧请求的结果会被丢弃，不再回填到页面上
+  let quizToken = 0;
   function fmtTomorrow(iso) {
     if (!iso) return '未安排';
     const d = new Date(iso);
@@ -158,13 +160,33 @@
     qv.classList.remove('hidden');
     document.getElementById('quiz-progress').textContent = '正在出题…';
     document.getElementById('quiz-body').innerHTML = '<div class="py-12">' + spinner('AI 正在出题…') + '</div>';
+    const myToken = ++quizToken;
+    // 出题是「一个知识点接一个知识点」串行做的，选中的知识点多时要等几十秒。
+    // 这里每秒刷新一次「已等待 n 秒」，让页面看起来是活的，而不是像卡死。
+    const t0 = Date.now();
+    const tick = setInterval(() => {
+      const box = document.getElementById('quiz-body');
+      if (!box) return;
+      box.innerHTML = '<div class="py-12">' + spinner('AI 正在出题…已等待 ' +
+        Math.round((Date.now() - t0) / 1000) + ' 秒（共 ' + ids.length + ' 个知识点）') + '</div>';
+    }, 1000);
     try {
       const qty = parseInt(document.getElementById('qty-select').value) || 0;
-      const r = await api('/review/start', { method: 'POST', body: JSON.stringify({ kp_ids: ids, count: qty }) });
+      // 超时必须大于服务端的出题总预算（server/routes/review.js 的 START_BUDGET_MS，默认 180 秒），
+      // 否则会在服务端还在正常出题时被前端误判为超时。
+      const r = await api('/review/start', {
+        method: 'POST',
+        body: JSON.stringify({ kp_ids: ids, count: qty }),
+        timeoutMs: 480000
+      });
+      // 必须在渲染题目之前停掉计时器：它每秒都会覆写 quiz-body
+      clearInterval(tick);
+      if (myToken !== quizToken) return;   // 用户已经退出复习，丢弃这次结果
       const questions = [];
-      for (const s of r.sessions) {
-        for (const q of s.questions) questions.push(Object.assign({}, q, { kp_id: s.kp_id, kp_name: s.kp_name, review_count: s.review_count }));
+      for (const s of (r.sessions || [])) {
+        for (const q of (s.questions || [])) questions.push(Object.assign({}, q, { kp_id: s.kp_id, kp_name: s.kp_name, review_count: s.review_count }));
       }
+      if (!questions.length) throw new Error('服务器没有返回任何题目，请重试');
       quiz = { questions, answers: {}, picks: {}, done: {}, idx: 0 };
       // 题型兜底：有≥2个选项就当选择题作答；选择题缺选项则按填空题作答
       for (const q of quiz.questions) {
@@ -185,6 +207,8 @@
       }
       renderQuestion();
     } catch (e) {
+      clearInterval(tick);
+      if (myToken !== quizToken) return;   // 已经退出，不再打扰用户
       toast('出题失败：' + e.message, 'err');
       qv.classList.add('hidden');
       document.getElementById('due-view').classList.remove('hidden');
@@ -411,6 +435,7 @@
 
   function abortQuiz() {
     if (!confirm('退出后本次作答不保存，确定？')) return;
+    quizToken++;          // 让可能还在后台出题的请求作废，结果不再回填
     quiz = null;
     document.getElementById('quiz-view').classList.add('hidden');
     document.getElementById('due-view').classList.remove('hidden');

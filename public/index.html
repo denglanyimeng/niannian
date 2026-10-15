@@ -79,6 +79,47 @@
 
     <div id="stat-cards" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6"></div>
 
+    <!-- 复习趋势：条形统计图 + 折线统计图 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 class="font-semibold text-slate-800">复习趋势</h2>
+          <p class="text-xs text-slate-400 mt-0.5">每天复习的知识点数量变化 · 鼠标悬停柱子或数据点可看当天详情</p>
+        </div>
+        <div id="trend-range" class="flex items-center gap-1 bg-slate-100 rounded-lg p-1"></div>
+      </div>
+      <div id="trend-summary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="inline-block w-3 h-3 rounded-sm" style="background:#BDDBF6;box-shadow:inset 0 0 0 1px rgba(60,124,168,.30)"></span>
+            <span class="text-sm font-medium text-slate-700">条形统计图 · 每日复习知识点数</span>
+          </div>
+          <div id="chart-bar"></div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="inline-block w-3 h-3 rounded-sm" style="background:#3C7CA8"></span>
+            <span class="text-sm font-medium text-slate-700">折线统计图 · 复习趋势</span>
+          </div>
+          <div id="chart-line"></div>
+          <div id="chart-legend" class="flex flex-wrap items-center gap-x-5 gap-y-1 mt-2 text-xs text-slate-500"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 复习记录 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="font-semibold text-slate-800">复习记录</h2>
+          <p class="text-xs text-slate-400 mt-0.5">每次完成复习后的得分与掌握度变化</p>
+        </div>
+        <span id="records-count" class="text-xs text-slate-400"></span>
+      </div>
+      <div id="records-list" class="space-y-2"></div>
+    </div>
+
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="font-semibold text-slate-800">未来 7 天复习计划</h2>
@@ -265,6 +306,237 @@ const CYCLE_LABEL = ['每日', '每 2 天', '每 3 天'];
     } catch (e) { toast(e.message, 'err'); }
   }
 
+  // ==================== 复习趋势图表（零依赖内联 SVG） ====================
+  // 不用任何图表库：本项目是自托管 + 手机局域网访问，不依赖外网 CDN 才最稳。
+  const WEEK_CN = ['日', '一', '二', '三', '四', '五', '六'];
+  const TREND_RANGES = [7, 14, 30];
+  let trendDays = 14;
+  // 图表配色：柱子用浅蓝 #BDDBF6，折线/数据点/文字用同色系更深的钢蓝 #3C7CA8（保证在白色卡片上可读）
+  const CHART_BAR = '#BDDBF6';
+  const CHART_LINE = '#3C7CA8';
+
+  // 把 Y 轴上限取成「能被 divisions 整除的整数」，让刻度都是好读的整数
+  function niceAxisMax(maxValue, divisions) {
+    const v = Math.max(1, Math.ceil(maxValue));
+    const raw = v / divisions;
+    const steps = [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 100, 200, 500, 1000];
+    let step = steps[steps.length - 1];
+    for (const s of steps) { if (raw <= s) { step = s; break; } }
+    return step * divisions;
+  }
+
+  function trendRangeHtml() {
+    document.getElementById('trend-range').innerHTML = TREND_RANGES.map((d) => {
+      const on = d === trendDays;
+      return '<button data-days="' + d + '" class="px-3 py-1.5 text-xs font-medium rounded-md transition ' +
+        (on ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700') + '">近 ' + d + ' 天</button>';
+    }).join('');
+    Array.from(document.querySelectorAll('#trend-range button')).forEach((b) => {
+      b.addEventListener('click', () => {
+        const d = Number(b.dataset.days);
+        if (d && d !== trendDays) loadTrend(d);
+      });
+    });
+  }
+
+  function renderTrendSummary(sum) {
+    const items = [
+      { label: '复习知识点', value: sum.total_kp, unit: '个', color: 'text-indigo-600' },
+      { label: '有复习的天数', value: sum.active_days + ' / ' + trendDays, unit: '天', color: 'text-slate-700' },
+      { label: '日均（有复习的天）', value: sum.avg_per_active_day, unit: '个', color: 'text-indigo-600' },
+      { label: '平均得分', value: sum.avg_score, unit: '分', color: 'text-rose-600' }
+    ];
+    document.getElementById('trend-summary').innerHTML = items.map((it) => `
+      <div class="bg-slate-50 rounded-xl px-4 py-3">
+        <div class="text-xs text-slate-500">${it.label}</div>
+        <div class="text-xl font-bold ${it.color} mt-1 leading-none tabular-nums">${it.value}<span class="text-xs font-normal text-slate-400 ml-1">${it.unit}</span></div>
+      </div>`).join('');
+  }
+
+  // 条形统计图：每日复习知识点数
+  function barChartSvg(series) {
+    const W = 760, H = 260, padL = 48, padR = 16, padT = 26, padB = 38;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const n = series.length;
+    const DIV = 4;
+    const yMax = niceAxisMax(series.reduce((m, x) => Math.max(m, x.kp_count), 0), DIV);
+    const slot = plotW / n;
+    const barW = Math.max(5, Math.min(30, slot * 0.62));
+    const labelStep = n <= 14 ? 1 : (n <= 21 ? 2 : 3);
+    const showValues = n <= 21;
+    let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="w-full h-auto" role="img" aria-label="每日复习知识点数条形统计图">';
+    for (let i = 0; i <= DIV; i++) {
+      const val = Math.round((yMax / DIV) * i);
+      const y = padT + plotH - (val / yMax) * plotH;
+      s += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) +
+        '" stroke="' + (i === 0 ? '#cbd5e1' : '#eef2f7') + '" stroke-width="1"/>';
+      s += '<text x="' + (padL - 8) + '" y="' + (y + 4).toFixed(1) + '" text-anchor="end" font-size="11" fill="#94a3b8">' + val + '</text>';
+    }
+    series.forEach((d, i) => {
+      const x = padL + i * slot + (slot - barW) / 2;
+      const h = (d.kp_count / yMax) * plotH;
+      const y = padT + plotH - h;
+      const tip = d.date + '（周' + WEEK_CN[d.week] + '）复习 ' + d.kp_count + ' 个知识点' +
+        (d.review_count ? '，提交 ' + d.review_count + ' 次批改' : '') +
+        (d.has_score ? '，当天平均 ' + d.avg_score + ' 分' : '') +
+        (d.error_count ? '，新增错题 ' + d.error_count + ' 道' : '');
+      if (d.kp_count > 0) {
+        s += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' +
+          Math.max(2, h).toFixed(1) + '" rx="4" fill="' + CHART_BAR + '"><title>' + esc(tip) + '</title></rect>';
+        if (showValues) {
+          s += '<text x="' + (x + barW / 2).toFixed(1) + '" y="' + (y - 6).toFixed(1) +
+            '" text-anchor="middle" font-size="11" font-weight="600" fill="' + CHART_LINE + '">' + d.kp_count + '</text>';
+        }
+      } else {
+        s += '<rect x="' + x.toFixed(1) + '" y="' + (padT + plotH - 2) + '" width="' + barW.toFixed(1) +
+          '" height="2" rx="1" fill="#e2e8f0"><title>' + esc(tip) + '</title></rect>';
+      }
+      if (i % labelStep === 0 || d.is_today || i === n - 1) {
+        s += '<text x="' + (padL + i * slot + slot / 2).toFixed(1) + '" y="' + (padT + plotH + 18) +
+          '" text-anchor="middle" font-size="11" fill="' + (d.is_today ? CHART_LINE : '#94a3b8') + '"' +
+          (d.is_today ? ' font-weight="600"' : '') + '>' +
+          (d.is_today ? '今天' : (d.month + '/' + d.day)) + '</text>';
+      }
+    });
+    return s + '</svg>';
+  }
+
+  // 折线统计图：复习知识点数（左轴）+ 当天平均得分（右轴，没有数据的日子断开）
+  function lineChartSvg(series) {
+    const W = 760, H = 260, padL = 48, padR = 48, padT = 26, padB = 38;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const n = series.length;
+    const DIV = 4;
+    const yMax = niceAxisMax(series.reduce((m, x) => Math.max(m, x.kp_count), 0), DIV);
+    const slot = plotW / n;
+    const cx = (i) => padL + i * slot + slot / 2;
+    const cyCount = (v) => padT + plotH - (v / yMax) * plotH;
+    const cyScore = (v) => padT + plotH - (Math.min(100, Math.max(0, v)) / 100) * plotH;
+    const labelStep = n <= 14 ? 1 : (n <= 21 ? 2 : 3);
+
+    let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="w-full h-auto" role="img" aria-label="复习知识点数趋势折线统计图">';
+    // 网格线（左轴=知识点数，右轴=得分百分比，两边共用这 5 条线）
+    for (let i = 0; i <= DIV; i++) {
+      const y = padT + plotH - (i / DIV) * plotH;
+      const leftVal = Math.round((yMax / DIV) * i);
+      const rightVal = Math.round((100 / DIV) * i);
+      s += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) +
+        '" stroke="' + (i === 0 ? '#cbd5e1' : '#eef2f7') + '" stroke-width="1"/>';
+      s += '<text x="' + (padL - 8) + '" y="' + (y + 4).toFixed(1) + '" text-anchor="end" font-size="11" fill="#94a3b8">' + leftVal + '</text>';
+      s += '<text x="' + (W - padR + 8) + '" y="' + (y + 4).toFixed(1) + '" text-anchor="start" font-size="11" fill="#fda4af">' + rightVal + '%</text>';
+    }
+    // 知识点数：面积 + 折线
+    const pts = series.map((d, i) => cx(i).toFixed(1) + ',' + cyCount(d.kp_count).toFixed(1));
+    s += '<polygon points="' + (padL + slot / 2).toFixed(1) + ',' + (padT + plotH) + ' ' + pts.join(' ') + ' ' +
+      (padL + (n - 1) * slot + slot / 2).toFixed(1) + ',' + (padT + plotH) + '" fill="' + CHART_LINE + '" opacity="0.10"/>';
+    s += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + CHART_LINE + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+    // 平均得分：只在有得分数据的日子连成一段（否则 0 分会被误画成跌到谷底）
+    let run = [];
+    const flush = () => {
+      if (run.length >= 2) {
+        s += '<polyline points="' + run.map((p) => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ') +
+          '" fill="none" stroke="#f43f5e" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" stroke-linecap="round"/>';
+      }
+      run = [];
+    };
+    series.forEach((d, i) => {
+      if (d.has_score) run.push({ x: cx(i), y: cyScore(d.avg_score) });
+      else flush();
+    });
+    flush();
+    // 数据点 + 悬停提示
+    series.forEach((d, i) => {
+      const tip = d.date + '（周' + WEEK_CN[d.week] + '）复习 ' + d.kp_count + ' 个知识点' +
+        (d.has_score ? '，当天平均 ' + d.avg_score + ' 分' : '，当天无得分数据') +
+        (d.error_count ? '，新增错题 ' + d.error_count + ' 道' : '');
+      s += '<circle cx="' + cx(i).toFixed(1) + '" cy="' + cyCount(d.kp_count).toFixed(1) +
+        '" r="3.6" fill="#fff" stroke="' + CHART_LINE + '" stroke-width="2"><title>' + esc(tip) + '</title></circle>';
+      if (d.has_score) {
+        s += '<circle cx="' + cx(i).toFixed(1) + '" cy="' + cyScore(d.avg_score).toFixed(1) +
+          '" r="3.2" fill="#fff" stroke="#f43f5e" stroke-width="2"><title>' + esc(tip) + '</title></circle>';
+      }
+      if (i % labelStep === 0 || d.is_today || i === n - 1) {
+        s += '<text x="' + cx(i).toFixed(1) + '" y="' + (padT + plotH + 18) + '" text-anchor="middle" font-size="11" fill="' +
+          (d.is_today ? CHART_LINE : '#94a3b8') + '"' + (d.is_today ? ' font-weight="600"' : '') + '>' +
+          (d.is_today ? '今天' : (d.month + '/' + d.day)) + '</text>';
+      }
+    });
+    return s + '</svg>';
+  }
+
+  function renderChartLegend() {
+    document.getElementById('chart-legend').innerHTML =
+      '<span class="inline-flex items-center gap-1.5"><span class="inline-block w-4 h-0.5" style="background:' + CHART_LINE + '"></span>复习知识点数（左轴）</span>' +
+      '<span class="inline-flex items-center gap-1.5"><span class="inline-block w-4 h-0.5" style="background:#f43f5e"></span>当天平均得分（右轴 %）</span>';
+  }
+
+  async function loadTrend(days) {
+    trendDays = days;
+    trendRangeHtml();
+    const barBox = document.getElementById('chart-bar');
+    const lineBox = document.getElementById('chart-line');
+    barBox.innerHTML = spinner('正在统计…');
+    lineBox.innerHTML = '';
+    document.getElementById('chart-legend').innerHTML = '';
+    document.getElementById('trend-summary').innerHTML = '';
+    try {
+      const t = await api('/stats/trend?days=' + days);
+      const hasAny = t.series.some((x) => x.kp_count > 0 || x.has_score);
+      if (!hasAny) {
+        barBox.innerHTML = empty('近 ' + days + ' 天还没有复习记录');
+        renderTrendSummary(t.summary);
+        return;
+      }
+      renderTrendSummary(t.summary);
+      barBox.innerHTML = barChartSvg(t.series);
+      lineBox.innerHTML = lineChartSvg(t.series);
+      renderChartLegend();
+    } catch (e) {
+      barBox.innerHTML = empty('趋势加载失败：' + e.message);
+    }
+  }
+
+  // ==================== 复习记录 ====================
+  function fmtRecordTime(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso || '');
+    const p = (n) => (n < 10 ? '0' : '') + n;
+    const hm = p(d.getHours()) + ':' + p(d.getMinutes());
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const that = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const diff = Math.round((today.getTime() - that) / 86400000);
+    if (diff === 0) return '今天 ' + hm;
+    if (diff === 1) return '昨天 ' + hm;
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hm;
+  }
+
+  function renderRecords(rows) {
+    const box = document.getElementById('records-list');
+    const countEl = document.getElementById('records-count');
+    if (!rows.length) {
+      countEl.textContent = '';
+      box.innerHTML = empty('还没有复习记录，去「开始复习」完成一次吧');
+      return;
+    }
+    countEl.textContent = '最近 ' + rows.length + ' 条';
+    box.innerHTML = rows.map((r) => {
+      const color = r.score >= 80 ? 'text-emerald-600' : r.score >= 60 ? 'text-indigo-600' : 'text-rose-600';
+      return `
+      <div class="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-3">
+        <div class="text-xs text-slate-500 w-28 shrink-0 tabular-nums">${esc(fmtRecordTime(r.review_time))}</div>
+        <div class="flex-1 min-w-0">
+          <div class="font-medium text-slate-800 text-sm truncate">${esc(r.kp_name)}</div>
+          <div class="mt-1 flex items-center gap-2">
+            <span class="text-[11px] text-slate-400 shrink-0">掌握度 ${r.master_rate}%</span>
+            <span class="inline-block w-20 align-middle">${progressBar(r.master_rate)}</span>
+          </div>
+        </div>
+        <div class="text-lg font-bold ${color} shrink-0 leading-none tabular-nums">${r.score}<span class="text-xs">分</span></div>
+      </div>`;
+    }).join('');
+  }
+
   async function refreshDashboard() {
     let stats, due;
     try {
@@ -276,6 +548,7 @@ const CYCLE_LABEL = ['每日', '每 2 天', '每 3 天'];
     renderCards(stats);
     renderToday(due, stats);
     renderWeek(due, stats);
+    renderRecords(stats.recent_records || []);
   }
 
   document.getElementById('home-add-slot').addEventListener('click', () => addHomeSlotRow({ start_time: '', end_time: '', cycle_type: 0, enabled: 1 }));
@@ -283,6 +556,7 @@ const CYCLE_LABEL = ['每日', '每 2 天', '每 3 天'];
 
   refreshDashboard();
   loadHomeSlots();
+  loadTrend(trendDays);
   </script>
 
   <script>

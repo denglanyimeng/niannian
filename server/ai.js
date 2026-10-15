@@ -4,9 +4,13 @@
 const { db } = require('./db');
 const { decrypt } = require('./crypto');
 
-const TIMEOUT_MS = 120000;
+// 单次 AI 请求的超时。原来是 120 秒 —— 太长：一次故障要干等两分钟才失败，
+// 再乘上重试次数和下面的「逐题兜底」，页面就会长时间停在「AI 正在出题」。
+const TIMEOUT_MS = 60000;
 const RETRY_TIMES = 2;        // 网络层失败最多重试 2 次（原来一次都不重试，所以偶发抖动就直接报错）
 const RETRY_DELAY_MS = 600;   // 重试间隔，逐次递增
+const FALLBACK_CONCURRENCY = 3;    // 「整批出题」不够时，逐题补题的并发上限
+const FALLBACK_BUDGET_MS = 60000;  // 逐题补题的总时间预算，超预算就直接用本地出题，不再继续等
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -22,6 +26,36 @@ function finalError(msg) {
   const e = new Error(msg);
   e.__final = true;
   return e;
+}
+
+// 区分两类失败：
+//   __final 错误 = 网络不通 / 超时 / 鉴权或地址错误 / 服务端 5xx —— 马上重发同样会失败；
+//   普通错误     = AI 确实回了内容，但格式或答案不可用 —— 换一次请求有意义。
+// 这个区分很关键：旧实现在任何失败之后都会「逐题重发 AI 请求」，
+// 一旦网络断掉，一个知识点就会变成十几次超时重试（最坏近一个半小时），
+// 而前端没有超时，页面只会一直显示「AI 正在出题」。
+function isUnrecoverableFailure(e) {
+  return !!(e && e.__final);
+}
+
+// 带并发上限的批量执行：把逐题兜底的串行请求压成几批，避免等待时间线性叠加。
+async function mapLimit(items, limit, fn) {
+  const list = Array.isArray(items) ? items : [];
+  const out = new Array(list.length);
+  const workerCount = Math.max(1, Math.min(limit || 1, list.length));
+  let next = 0;
+  const workers = [];
+  for (let w = 0; w < workerCount; w++) {
+    workers.push((async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= list.length) return;
+        out[i] = await fn(list[i], i);
+      }
+    })());
+  }
+  await Promise.all(workers);
+  return out;
 }
 
 // 把 fetch 的网络层失败翻译成能看懂的说明
@@ -407,6 +441,20 @@ function tagDegraded(list, err) {
   return arr;
 }
 
+// 记录「这一批里有几道题是本地兜底出来的」。
+// 旧实现只要有一道题降级，就把整批标记成 degraded，路由层于是提示
+// 「AI 出题失败，已降级为本地出题」—— 用户看到这句话会以为 AI 完全没干活，
+// 其实其余 14 道都是 AI 出的好题。现在只有整批都降级才算真正的「AI 出题失败」。
+function attachDegradeInfo(arr, degradedCount, total, reason) {
+  const n = Number(degradedCount) || 0;
+  if (n > 0) {
+    arr.degraded = n >= total;
+    arr.degradedCount = n;
+    arr.degradeReason = String(reason || '原因未知').slice(0, 300);
+  }
+  return arr;
+}
+
 // 从原文的一行里挖一个空，用于生成"答案直接来自笔记"的填空题。
 // 优先挖反引号代码 / 英文标识符 / 数字；纯中文笔记则挖掉最长的子句。
 function makeBlank(line) {
@@ -515,24 +563,40 @@ function allocateQuestions(pointCount, customFlow, mode) {
   return list.slice(0, 15);
 }
 
+// 按题量上限裁剪出题清单：先保选择题，再填空，最后简答
+function trimAlloc(alloc, maxCount) {
+  if (!(maxCount > 0) || alloc.length <= maxCount) return alloc;
+  const choice = alloc.filter((a) => a.type === 0);
+  const fill = alloc.filter((a) => a.type === 1);
+  const essay = alloc.filter((a) => a.type === 2);
+  const trimmed = [];
+  for (const bucket of [choice, fill, essay]) {
+    for (const item of bucket) {
+      if (trimmed.length >= maxCount) break;
+      trimmed.push(item);
+    }
+    if (trimmed.length >= maxCount) break;
+  }
+  return trimmed;
+}
+
+// 整批改用本地出题，完全不调用 AI（因此是毫秒级返回）。
+// 两条路径会用到它：AI 接口本身不可用（网络/超时/鉴权），
+// 以及本次请求的总时长预算已经用完。这样用户最多等几秒就能开始做题，而不是一直转圈。
+function offlineBlockQuestions(kp, points, reviewCount, maxCount, mode, reason) {
+  const alloc = trimAlloc(allocateQuestions(points.length, kp.custom_exam_flow, mode), maxCount);
+  const out = [];
+  for (const a of alloc) {
+    const qs = offlineQuestions(kp, reviewCount, a.type, 1);
+    if (qs.length) out.push(qs[0]);
+  }
+  return attachDegradeInfo(out, out.length, out.length, reason || 'AI 出题不可用');
+}
+
 // 按复习块批量出题：一次 AI 调用覆盖所有分点，失败时回退逐点生成
 async function generateBlockQuestions(kp, points, reviewCount, maxCount, mode) {
   const P = points.length;
-  let alloc = allocateQuestions(P, kp.custom_exam_flow, mode);
-  if (maxCount > 0 && alloc.length > maxCount) {
-    const choice = alloc.filter((a) => a.type === 0);
-    const fill = alloc.filter((a) => a.type === 1);
-    const essay = alloc.filter((a) => a.type === 2);
-    const trimmed = [];
-    for (const bucket of [choice, fill, essay]) {
-      for (const item of bucket) {
-        if (trimmed.length >= maxCount) break;
-        trimmed.push(item);
-      }
-      if (trimmed.length >= maxCount) break;
-    }
-    alloc = trimmed;
-  }
+  const alloc = trimAlloc(allocateQuestions(P, kp.custom_exam_flow, mode), maxCount);
   const label = { 0: '选择题', 1: '填空题', 2: '简答题' };
   const pointLines = points.map((pt, i) => '【' + (i + 1) + '】' + (pt.name || '要点' + (i + 1)) + '\n' + (pt.content || '').slice(0, 1200)).join('\n\n');
   const specLines = alloc.map((a, i) => (i + 1) + '. 基于第 ' + (a.point + 1) + ' 个要点「' + (points[a.point].name || '') + '」，出 1 道' + label[a.type]).join('\n');
@@ -567,33 +631,57 @@ async function generateBlockQuestions(kp, points, reviewCount, maxCount, mode) {
       if (item && item._invalid) { droppedInvalid++; return; }
       (buckets[pi] = buckets[pi] || []).push(item);
     });
-    const final = [];
-    let degraded = false;
-    let degradeReason = '';
-    for (const a of alloc) {
+    // 先用整批调用已经拿到的题；不够的槽位才逐题补。
+    // 逐题补必须并发（有上限）并且在时间预算内结束 —— 旧实现是串行 await，
+    // 最多 15 次、每次还可能重试 3 次，一个知识点就能拖到近一个半小时。
+    const slots = new Array(alloc.length).fill(null);
+    const missing = [];
+    alloc.forEach((a, i) => {
       let item = buckets[a.point] ? buckets[a.point].shift() : null;
       if (item && (item.question_type !== a.type || (a.type === 0 && !(item.choices && item.choices.length >= 2)))) item = null;
-      if (!item) {
-        const qs = await generateQuestions(kp, reviewCount, a.type, 1, points[a.point]);
-        if (qs.degraded && !degraded) { degraded = true; degradeReason = qs.degradeReason || ''; }
-        item = qs.length ? qs[0] : null;
+      if (item) slots[i] = item; else missing.push(i);
+    });
+    let degradedCount = 0;
+    let degradeReason = '';
+    const deadline = Date.now() + FALLBACK_BUDGET_MS;
+    const filled = await mapLimit(missing, FALLBACK_CONCURRENCY, async (i) => {
+      const a = alloc[i];
+      if (Date.now() > deadline) {
+        // 预算用完：剩余槽位直接用本地出题，不再等 AI
+        degradedCount++;
+        if (!degradeReason) degradeReason = 'AI 补题等待超时';
+        const qs = offlineQuestions(kp, reviewCount, a.type, 1);
+        return qs.length ? qs[0] : null;
       }
-      if (item) final.push(item);
-    }
+      const qs = await generateQuestions(kp, reviewCount, a.type, 1, points[a.point]);
+      if (qs.degraded) { degradedCount++; if (!degradeReason) degradeReason = qs.degradeReason || ''; }
+      return qs.length ? qs[0] : null;
+    });
+    missing.forEach((slotIndex, k) => { slots[slotIndex] = filled[k]; });
+    const final = slots.filter(Boolean);
     if (!final.length) throw new Error('AI 未返回有效题目');
-    if (degraded) { final.degraded = true; final.degradeReason = degradeReason; }
+    attachDegradeInfo(final, degradedCount, final.length, degradeReason);
     if (droppedInvalid) final.invalidDropped = droppedInvalid;
     return final;
   } catch (e) {
-    const out = [];
-    let degraded = false;
-    let degradeReason = '';
-    for (const a of alloc) {
-      const qs = await generateQuestions(kp, reviewCount, a.type, 1, points[a.point]);
-      if (qs.degraded && !degraded) { degraded = true; degradeReason = qs.degradeReason || ''; }
-      if (qs.length) out.push(qs[0]);
+    // 整批调用失败。
+    // 网络/超时/鉴权这类「马上重发也没用」的故障 → 整批直接本地出题，毫秒级返回。
+    // 这是旧实现最致命的缺口：它会在这种情况下再串行重发最多 15 次完整 AI 请求，
+    // 于是前端就会一直显示「AI 正在出题」。
+    if (isUnrecoverableFailure(e)) {
+      return offlineBlockQuestions(kp, points, reviewCount, maxCount, mode,
+        (e && e.message) ? e.message : 'AI 接口不可用');
     }
-    if (degraded) { out.degraded = true; out.degradeReason = degradeReason; }
+    // 内容层面的失败（AI 回了，但格式或答案不可用）→ 逐题补，并发且有上限
+    let degradedCount = 0;
+    let degradeReason = '';
+    const results = await mapLimit(alloc, FALLBACK_CONCURRENCY, async (a) => {
+      const qs = await generateQuestions(kp, reviewCount, a.type, 1, points[a.point]);
+      if (qs.degraded) { degradedCount++; if (!degradeReason) degradeReason = qs.degradeReason || ''; }
+      return qs.length ? qs[0] : null;
+    });
+    const out = results.filter(Boolean);
+    attachDegradeInfo(out, degradedCount, out.length, degradeReason);
     return out;
   }
 }
@@ -813,6 +901,8 @@ module.exports = {
   generateQuestions, generateBlockQuestions, allocateQuestions, questionCountFor,
   getConfig, templateSupportsImage, sanitizeChoices,
   // 供判题与自测复用
-  normAnswer, findChoiceIndex, makeBlank, offlineQuestions,
-  looseKey, editDistance, isSymbolSensitive, fillAnswerCorrect
+  normAnswer, findChoiceIndex, makeBlank, offlineQuestions, offlineBlockQuestions,
+  looseKey, editDistance, isSymbolSensitive, fillAnswerCorrect,
+  // 供排障与自测复用
+  isUnrecoverableFailure, attachDegradeInfo, mapLimit
 };

@@ -44,15 +44,36 @@ function toast(msg, type) {
   setTimeout(() => box.remove(), 3500);
 }
 
+// 统一的接口调用。
+// 关键：必须带超时。旧实现是裸 fetch —— 一旦连接被中断（网络抖动、电脑休眠唤醒、
+// 服务重启），这个 Promise 可能永远不 settle，调用方的「转圈」就会一直转下去。
+// 默认 120 秒（够 AI 解析笔记这类慢接口）；出题那种更慢的用 opts.timeoutMs 单独放宽。
 async function api(path, opts) {
-  const res = await fetch('/api' + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts
-  });
-  let data = {};
-  try { data = await res.json(); } catch (e) {}
-  if (!res.ok) throw new Error(data.error || '请求失败 (' + res.status + ')');
-  return data;
+  const o = opts || {};
+  const timeoutMs = Number(o.timeoutMs) > 0 ? Number(o.timeoutMs) : 120000;
+  const init = Object.assign({}, o);
+  delete init.timeoutMs;
+  init.headers = Object.assign({ 'Content-Type': 'application/json' }, init.headers || {});
+  const ctrl = new AbortController();
+  init.signal = ctrl.signal;
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch('/api' + path, init);
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) throw new Error(data.error || '请求失败 (' + res.status + ')');
+    return data;
+  } catch (e) {
+    if (e && (e.name === 'AbortError' || /aborted/i.test(String(e.message || '')))) {
+      throw new Error('请求超时：超过 ' + Math.round(timeoutMs / 1000) + ' 秒没有收到响应，请重试');
+    }
+    if (e instanceof TypeError) {
+      throw new Error('无法连接念念服务（' + e.message + '），请确认念念的服务窗口还在运行');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function injectNav() {
@@ -83,7 +104,7 @@ function injectNav() {
       </div>
       <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">${items}</nav>
       <div class="px-5 py-4 border-t border-slate-800 text-[11px] text-slate-500">
-        ${active ? active.label : ''}<br>v0.1.1 本地运行
+        ${active ? active.label : ''}<br>v0.1.2 本地运行
       </div>
     </aside>
     <header class="mobile-topbar md:hidden fixed top-0 inset-x-0 z-40 bg-slate-900/95 backdrop-blur flex items-center justify-between px-4 border-b border-slate-800">

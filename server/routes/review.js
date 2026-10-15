@@ -1,7 +1,7 @@
 // 复习流程：今日任务规划 → 生成题目 → 提交批改 → 更新掌握度与下次复习时间
 const express = require('express');
 const { db, now } = require('../db');
-const { generateQuestions, questionCountFor, generateBlockQuestions, normAnswer, findChoiceIndex, fillAnswerCorrect, looseKey } = require('../ai');
+const { generateQuestions, questionCountFor, generateBlockQuestions, offlineBlockQuestions, offlineQuestions, normAnswer, findChoiceIndex, fillAnswerCorrect, looseKey } = require('../ai');
 const {
   questionTypeForReview, scheduleNextReview, planDueTasks, planDayTasks,
   updateMasterRate, intensitySuggestion, startOfDay, quizModeForReview, modeBudget
@@ -10,6 +10,12 @@ const {
 const router = express.Router();
 const TYPE_LABEL = { 0: '选择题', 1: '填空题', 2: '简答题' };
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// 一次「开始复习」请求的总时间预算（毫秒）。
+// 超预算后剩余知识点直接改用本地出题，从而保证「最多等多久」是确定的：
+// 否则选中的知识点越多、AI 接口越慢，等待时间就越长，页面看起来就像卡死了。
+// 注意：前端 public/review.html 里 /review/start 的超时必须大于这个值 + 单个知识点可能占用的时间。
+const START_BUDGET_MS = Number(process.env.NN_START_BUDGET_MS) || 180000;
 
 // 今日待复习任务
 router.get('/due', (req, res) => {
@@ -34,7 +40,14 @@ router.post('/start', async (req, res) => {
   if (!ids.length) return res.status(400).json({ ok: false, error: '请选择要复习的知识点' });
   const sessions = [];
   const warnings = [];
+  const deadline = Date.now() + START_BUDGET_MS;
+  const budgetMsg = '本次出题总时长已达上限（' + Math.round(START_BUDGET_MS / 1000) + ' 秒），为保证你能马上开始复习，剩余知识点改用本地出题';
+  // 用户关掉页面或点了「退出复习」之后，不再继续白跑 AI 请求。
+  // 'close' 在正常响应结束时也会触发，所以必须用 writableEnded 区分「正常结束」和「客户端断开」。
+  let clientGone = false;
+  res.on('close', () => { if (!res.writableEnded) clientGone = true; });
   for (const id of ids) {
+    if (clientGone) break;
     const kp = db.prepare('SELECT * FROM knowledge_point WHERE id = ?').get(id);
     if (!kp) continue;
     const reviewCount = (kp.review_count || 0) + 1;
@@ -48,8 +61,17 @@ router.post('/start', async (req, res) => {
     let generated = [];
     let blockPoints = [];
     try { blockPoints = JSON.parse(kp.points || '[]'); } catch (e) { blockPoints = []; }
+    const outOfTime = Date.now() > deadline;
     if (Array.isArray(blockPoints) && blockPoints.length) {
-      generated = await generateBlockQuestions(kp, blockPoints, reviewCount, effMax, mode);
+      generated = outOfTime
+        ? offlineBlockQuestions(kp, blockPoints, reviewCount, effMax, mode, budgetMsg)
+        : await generateBlockQuestions(kp, blockPoints, reviewCount, effMax, mode);
+    } else if (outOfTime) {
+      const local = offlineQuestions(kp, reviewCount, qType, qCount);
+      local.degraded = true;
+      local.degradedCount = local.length;
+      local.degradeReason = budgetMsg;
+      generated = local;
     } else {
       generated = await generateQuestions(kp, reviewCount, qType, qCount);
     }
@@ -73,6 +95,9 @@ router.post('/start', async (req, res) => {
     // 降级/丢弃必须让用户看见（旧实现是静默降级，用户只会看到莫名其妙的烂题）
     if (generated.degraded) {
       warnings.push('「' + kp.name + '」AI 出题失败，已降级为本地出题：' + (generated.degradeReason || '原因未知'));
+    } else if (generated.degradedCount) {
+      // 只有个别题降级时，不再谎报「AI 出题失败」——那会让人以为整批题都不是 AI 出的
+      warnings.push('「' + kp.name + '」' + questions.length + ' 道题中有 ' + generated.degradedCount + ' 道由本地兜底生成，其余为 AI 出题');
     }
     if (generated.invalidDropped) {
       warnings.push('「' + kp.name + '」有 ' + generated.invalidDropped + ' 道 AI 题因答案与选项对不上被丢弃');
